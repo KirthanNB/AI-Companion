@@ -1,5 +1,30 @@
 // src/renderer.js - Phase 3 (Transparent Overlay + Automation)
 const { ipcRenderer } = require('electron');
+
+let isGameMode = false;
+const btnGameMode = document.getElementById('btn-game-mode');
+
+if (btnGameMode) {
+    btnGameMode.addEventListener('click', async () => {
+        isGameMode = !isGameMode;
+        if (isGameMode) {
+            btnGameMode.style.background = '#4ade80'; // Green
+            const msg = await ipcRenderer.invoke('start-game-agent', "Play the game on screen.");
+            console.log(msg);
+        } else {
+            btnGameMode.style.background = '#cd5c5c'; // Red
+            const msg = await ipcRenderer.invoke('stop-game-agent');
+        }
+    });
+
+    // Fix: Ensure the button captures mouse events so it can be clicked
+    btnGameMode.addEventListener('mouseenter', () => {
+        ipcRenderer.send('set-ignore-mouse-events', false);
+    });
+    btnGameMode.addEventListener('mouseleave', () => {
+        ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
+    });
+}
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 // --- Configuration ---
@@ -96,6 +121,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Default: Ignore mouse (Pass-through)
     setIgnoreMouseEvents(true);
 
+    // [NEW] Listen for Agent Logs
+    ipcRenderer.on('agent-log', (event, msg) => {
+        logToScreen("🤖 " + msg);
+    });
 });
 
 function cycleRoamMode(btn = null) {
@@ -727,9 +756,16 @@ async function setupAudioRecording() {
 }
 
 function toggleListening() {
+    // [INTERRUPT] Stop speaking immediately when button is clicked
+    stopSpeaking();
+    if (actors.human) {
+        actors.human.isTalking = false;
+        actors.human.state = 'IDLE';
+    }
+
     if (!mediaRecorder) { logToScreen("⚠️ Mic not ready"); return; }
     if (mediaRecorder.state === "inactive") {
-        stopSpeaking(); audioChunks = []; mediaRecorder.start();
+        audioChunks = []; mediaRecorder.start();
         document.getElementById('btn-mic').classList.add('listening');
         showBubble("Listening... 👂"); logToScreen("🔴 Recording...");
     } else { mediaRecorder.stop(); logToScreen("🛑 Processing..."); }
@@ -746,30 +782,61 @@ function blobToBase64(blob) {
 function stopSpeaking() {
     const audio = document.getElementById('audio-player');
     if (audio) { audio.pause(); audio.currentTime = 0; }
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel(); // Also stop system voice
 }
 
 async function processAudioMessage(base64Audio) {
     try {
         const genAI = new GoogleGenerativeAI(geminiKey);
-        const systemPrompt = `You are "Glitch", an AI desktop assistant.
-        capabilities: [Voice Interaction, Browser Automation, Screen Vision]
-        INSTRUCTIONS:
-        1. "Open YouTube" -> {"type": "open", "url": "https://youtube.com"}
-        2. "Search cats" -> {"type": "search", "query": "cats"}
-        3. "Look at screen" -> {"type": "vision"}
-        4. "Open Notepad" -> {"type": "app", "app": "notepad"}
-        5. "Write Hello" -> {"type": "type", "text": "Hello"}
-        6. Else: Short text response.`;
+
+        // --- BEAST MODE: SYSTEM PROMPT ---
+        const systemPrompt = `You are "Glitch", a High-Performance Autonomous Desktop Agent.
+        
+        CAPABILITIES:
+        1. [FILE SYSTEM] Write/Read code, create projects.
+        2. [SHELL] Run terminal commands (npm, git, code).
+        3. [BROWSER] Navigate & Search.
+        4. [VISION] See screen.
+        
+        BEHAVIOR:
+        - If the user asks for a complex task (e.g., "Build a website"), start an AGENT LOOP.
+        - You can Execute MULTIPLE steps by returning a JSON ARRAY of objects.
+        - Output valid JSON only for actions.
+        
+        TOOLS (JSON FORMAT):
+        - { "type": "open", "url": "..." }
+        - { "type": "file", "operation": "write", "path": "...", "content": "..." }
+        - { "type": "shell", "command": "...", "cwd": "..." }
+        - { "type": "speak", "text": "..." }
+        
+        EXAMPLE "Build a React App":
+        [
+          { "type": "speak", "text": "Starting React project..." },
+          { "type": "shell", "command": "npx create-react-app my-app", "cwd": "d:/Projects" },
+          { "type": "file", "operation": "write", "path": "d:/Projects/my-app/README.md", "content": "# My App" },
+          { "type": "shell", "command": "code .", "cwd": "d:/Projects/my-app" }
+        ]
+        `;
 
         const model = genAI.getGenerativeModel({ model: GEMINI_MODEL, systemInstruction: systemPrompt });
 
         if (!window.chatSession) {
             window.chatSession = model.startChat({
                 history: [
-                    { role: "user", parts: [{ text: "Hello, I am ready to work." }] },
-                    { role: "model", parts: [{ text: "Ready for orders! 🫡" }] },
+                    { role: "user", parts: [{ text: "System Boot." }] },
+                    { role: "model", parts: [{ text: "Glitch OS Online. Awaiting complex directives." }] },
                 ],
             });
+        }
+
+        // [OPTIMIZATION] History Pruning
+        // Keep only last 10 turns to save tokens
+        if (window.chatSession.history && window.chatSession.history.length > 20) {
+            // Remove oldest, keep first 2 (Context) + last 18
+            const keep = window.chatSession.history.slice(window.chatSession.history.length - 18);
+            const context = window.chatSession.history.slice(0, 2);
+            window.chatSession.history = [...context, ...keep];
+            logToScreen("🧹 History Pruned to save credits.");
         }
 
         const audioPart = { inlineData: { data: base64Audio, mimeType: "audio/mp3" } };
@@ -777,28 +844,56 @@ async function processAudioMessage(base64Audio) {
         const responseText = result.response.text();
         logToScreen("🤖 " + responseText);
 
-        if (responseText.trim().startsWith('{')) {
-            const action = JSON.parse(responseText.match(/\{.*\}/s)[0]);
-            if (action.type === 'screenshot' || action.type === 'vision') {
-                logToScreen("👁️ Capturing Screen...");
-                const base64Image = await ipcRenderer.invoke('take-screenshot');
-                const imagePart = { inlineData: { data: base64Image, mimeType: "image/png" } };
-                const visionModel = genAI.getGenerativeModel({ model: GEMINI_MODEL });
-                const visionResult = await visionModel.generateContent(["User asked to look at screen. Describe this:", imagePart]);
-                const visionText = visionResult.response.text();
-                showBubble("I see: " + visionText); speak(visionText);
-                return;
+        // --- AGENT LOOP HANDLING ---
+        // Enhanced parser for Arrays or Single JSON
+        // Regex to find either [...] or {...}
+        if (responseText.trim().includes('{') || responseText.trim().includes('[')) {
+            try {
+                let actions = [];
+                // 1. Try to find Array First
+                const arrayMatch = responseText.match(/\[([\s\S]*)\]/);
+                if (arrayMatch) {
+                    actions = JSON.parse(arrayMatch[0]);
+                } else {
+                    // 2. Try Single Object
+                    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+                    if (jsonMatch) actions = [JSON.parse(jsonMatch[0])];
+                }
+
+                if (actions.length > 0) {
+                    for (const action of actions) {
+                        if (action.type === 'speak') {
+                            showBubble(action.text);
+                            speak(action.text);
+                            // Do not return, continue to next action (e.g., Speak then Do)
+                            continue;
+                        }
+
+                        logToScreen(`⚡ EXECUTING: ${action.type}`);
+                        showBubble("Running: " + action.type);
+
+                        // Execute Action
+                        let output = "";
+                        if (['open', 'search', 'app', 'type', 'file', 'shell'].includes(action.type)) {
+                            output = await ipcRenderer.invoke('perform-action', action);
+                        }
+
+                        // [Beast Mode] Log output
+                        if (output) logToScreen(`✅ Result: ${output.substring(0, 30)}...`);
+
+                        // Optional: Small delay between steps
+                        await new Promise(r => setTimeout(r, 1000));
+                    }
+                    return;
+                }
+            } catch (e) {
+                console.error("JSON Parse Error", e);
             }
-            if (action.type === 'open' || action.type === 'search' || action.type === 'app' || action.type === 'type') {
-                logToScreen(`⚡ Action: ${action.type}`);
-                showBubble("On it! ⚡"); speak("Right away!");
-                await ipcRenderer.invoke('perform-action', action);
-                return;
-            }
-        } else {
-            showBubble(responseText);
-            speak(responseText);
         }
+
+        // Fallback: Just talk
+        showBubble(responseText);
+        speak(responseText);
     } catch (e) {
         logToScreen("❌ Error: " + e.message);
         showBubble("Error 😵");

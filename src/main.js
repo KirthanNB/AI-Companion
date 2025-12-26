@@ -80,6 +80,24 @@ app.on('activate', () => {
 });
 
 const Automation = require('./automation');
+const GameAgent = require('./ai/GameAgent');
+
+let gameAgentInstance = null;
+function getGameAgent() {
+  if (!gameAgentInstance) {
+    gameAgentInstance = new GameAgent(
+      process.env.GEMINI_API_KEY,
+      (msg) => {
+        // Logger callback: Send to all windows
+        BrowserWindow.getAllWindows().forEach(win => {
+          win.webContents.send('agent-log', msg);
+        });
+        console.log(msg); // Keep server log too
+      }
+    );
+  }
+  return gameAgentInstance;
+}
 
 // IPC handlers
 ipcMain.handle('get-env', (event, key) => {
@@ -88,17 +106,8 @@ ipcMain.handle('get-env', (event, key) => {
 
 // Screen Capture Handler
 ipcMain.handle('take-screenshot', async () => {
-  const { desktopCapturer } = require('electron');
-  // Get screens
-  const sources = await desktopCapturer.getSources({
-    types: ['screen'],
-    thumbnailSize: { width: 1920, height: 1080 }
-  });
-
-  // Use first screen
-  const primarySource = sources[0];
-  const image = primarySource.thumbnail.toPNG();
-  return image.toString('base64');
+  const { captureScreen } = require('./services/ScreenObserver');
+  return await captureScreen();
 });
 
 // Browser Automation Handler
@@ -148,38 +157,33 @@ ipcMain.handle('perform-action', async (event, action) => {
 
     // Phase 7: Typing (Keyboard Simulation)
     if (action.type === 'type') {
-      const { spawn } = require('child_process');
-      const text = action.text.replace(/"/g, '\\"');
-
-      // Improved Focus Logic:
-      // 1. Wait 1s
-      // 2. Try to activate window by commonly known process names (Notepad, Chrome, Code)
-      // 3. SendKeys
-
-      const psCommand = `
-         Start-Sleep -Seconds 1
-         Add-Type -AssemblyName Microsoft.VisualBasic
-         Add-Type -AssemblyName System.Windows.Forms
-         
-         # Try to find and activate the likely active process/window
-         # For simplicity in this demo, we assume the user JUST launched it or it's the active window.
-         # But let's try to be smart:
-         
-         [Microsoft.VisualBasic.Interaction]::AppActivate("Notepad")
-         # If Notepad isn't open, this might throw, but we catch it silently in PS usually or subsequent commands run.
-         # Actually AppActivate throws if not found. Let's make it try/catch or just simple SendKeys fallback.
-         
-         Start-Sleep -Milliseconds 500
-         [System.Windows.Forms.SendKeys]::SendWait("${text}")
-       `;
-
-      const ps = spawn('powershell', ['-Command', psCommand]);
-
-      ps.stderr.on('data', (data) => {
-        console.error(`PS Error: ${data}`);
-      });
-
+      const InputController = require('./services/InputController');
+      InputController.type(action.text);
       return "Typing: " + action.text;
+    }
+
+    // Phase 8: Real-time Input
+    if (action.type === 'pressKey') {
+      const InputController = require('./services/InputController');
+      InputController.pressKey(action.key);
+      return "Pressed " + action.key;
+    }
+
+    if (action.type === 'click') {
+      const InputController = require('./services/InputController');
+      InputController.click();
+      return "Clicked mouse";
+    }
+
+    // --- BEAST MODE: Files & Shell ---
+    if (action.type === 'file') {
+      const { handleFileAction } = require('./tools/files');
+      return await handleFileAction(action);
+    }
+
+    if (action.type === 'shell') {
+      const { handleShellAction } = require('./tools/shell');
+      return await handleShellAction(action);
     }
 
     return "Unknown action";
@@ -187,6 +191,19 @@ ipcMain.handle('perform-action', async (event, action) => {
     console.error('Automation failed:', error);
     return "Failed: " + error.message;
   }
+});
+
+// Game Agent IPC
+ipcMain.handle('start-game-agent', async (event, instruction) => {
+  const agent = getGameAgent();
+  agent.start(instruction);
+  return "Game Agent Started";
+});
+
+ipcMain.handle('stop-game-agent', async () => {
+  const agent = getGameAgent();
+  agent.stop();
+  return "Game Agent Stopped";
 });
 
 console.log('✅ Electron app initialized');
