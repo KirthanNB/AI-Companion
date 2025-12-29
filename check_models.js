@@ -10,9 +10,9 @@ async function checkModels() {
 
     try {
         const genAI = new GoogleGenerativeAI(key);
-        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
 
-        console.log("Attempting to generate with gemini-1.5-flash...");
+        console.log("Attempting to generate with gemini-2.0-flash-exp...");
         const result = await model.generateContent("Hi");
         console.log("Success!");
     } catch (error) {

@@ -1,30 +1,5 @@
-// src/renderer.js - Phase 3 (Transparent Overlay + Automation)
 const { ipcRenderer } = require('electron');
-
-let isGameMode = false;
-const btnGameMode = document.getElementById('btn-game-mode');
-
-if (btnGameMode) {
-    btnGameMode.addEventListener('click', async () => {
-        isGameMode = !isGameMode;
-        if (isGameMode) {
-            btnGameMode.style.background = '#4ade80'; // Green
-            const msg = await ipcRenderer.invoke('start-game-agent', "Play the game on screen.");
-            console.log(msg);
-        } else {
-            btnGameMode.style.background = '#cd5c5c'; // Red
-            const msg = await ipcRenderer.invoke('stop-game-agent');
-        }
-    });
-
-    // Fix: Ensure the button captures mouse events so it can be clicked
-    btnGameMode.addEventListener('mouseenter', () => {
-        ipcRenderer.send('set-ignore-mouse-events', false);
-    });
-    btnGameMode.addEventListener('mouseleave', () => {
-        ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
-    });
-}
+// [REMOVED] Duplicate start logic. Combined into DOMContentLoaded below.
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 // --- Configuration ---
@@ -34,12 +9,16 @@ const MEOW_SOUNDS = ["meow1.mp3", "meow2.mp3", "meow3.mp3"];
 
 // --- State ---
 let isListening = false;
+let isGameMode = false; // [NEW] Track game mode state
 let mediaRecorder = null;
 let audioChunks = [];
-let voiceId = null;
 let geminiKey = null;
 let elevenKey = null;
+let voiceId = null; // [NEW] Declare global voiceId
 let roamMode = 'FULL'; // FULL, BOTTOM, NONE
+let currentRequestId = 0; // [NEW] Track requests for interruption
+let isVisionActive = false; // [NEW] Manual vision toggle
+let isDebugActive = true; // [NEW] Manual debug toggle (default ON)
 
 // Helper to log to screen
 function logToScreen(msg) {
@@ -89,23 +68,79 @@ document.addEventListener('DOMContentLoaded', async () => {
         micBtn.addEventListener('mouseenter', () => setIgnoreMouseEvents(false));
         micBtn.addEventListener('mouseleave', () => setIgnoreMouseEvents(true));
 
-        // Add MODE Button
-        const modeBtn = document.createElement('button');
-        modeBtn.textContent = "MODE: FULL";
-        modeBtn.style.padding = "5px 10px";
-        modeBtn.style.marginLeft = "10px";
-        modeBtn.style.fontSize = "12px";
-        modeBtn.style.cursor = "pointer";
-        modeBtn.style.background = "rgba(0,0,0,0.5)";
-        modeBtn.style.color = "white";
-        modeBtn.style.border = "1px solid rgba(255,255,255,0.3)";
-        modeBtn.style.borderRadius = "5px";
-        modeBtn.addEventListener('click', () => {
-            cycleRoamMode(modeBtn);
-        });
-        modeBtn.addEventListener('mouseenter', () => setIgnoreMouseEvents(false));
-        modeBtn.addEventListener('mouseleave', () => setIgnoreMouseEvents(true));
-        micBtn.parentNode.appendChild(modeBtn);
+        // [NEW] Setup Roam Toggle
+        const roamBtn = document.getElementById('btn-roam');
+        if (roamBtn) {
+            roamBtn.addEventListener('click', () => cycleRoamMode(roamBtn));
+            roamBtn.addEventListener('mouseenter', () => setIgnoreMouseEvents(false));
+            roamBtn.addEventListener('mouseleave', () => setIgnoreMouseEvents(true));
+        }
+
+        // [NEW] Setup Vision Toggle
+        const visionBtn = document.getElementById('btn-vision');
+        if (visionBtn) {
+            visionBtn.addEventListener('click', () => toggleVision(visionBtn));
+            visionBtn.addEventListener('mouseenter', () => setIgnoreMouseEvents(false));
+            visionBtn.addEventListener('mouseleave', () => setIgnoreMouseEvents(true));
+        }
+
+        // [NEW] Setup Debug Toggle
+        const debugBtn = document.getElementById('btn-debug');
+        if (debugBtn) {
+            debugBtn.addEventListener('click', () => toggleDebug(debugBtn));
+            debugBtn.addEventListener('mouseenter', () => setIgnoreMouseEvents(false));
+            debugBtn.addEventListener('mouseleave', () => setIgnoreMouseEvents(true));
+        }
+
+        // [NEW] Setup Game Mode Toggle
+        const gameModeBtn = document.getElementById('btn-game-mode');
+        const agentPanel = document.getElementById('agent-panel');
+        const agentInput = document.getElementById('agent-input');
+        const btnStart = document.getElementById('btn-start-agent');
+        const btnStop = document.getElementById('btn-stop-agent');
+        const statusDiv = document.getElementById('agent-status');
+
+        if (gameModeBtn && agentPanel) {
+            gameModeBtn.addEventListener('click', () => {
+                const isVisible = agentPanel.style.display === 'block';
+                agentPanel.style.display = isVisible ? 'none' : 'block';
+                if (!isVisible && agentInput) agentInput.focus();
+                showBubble(isVisible ? "Agent Panel OFF 🤫" : "Agent Panel ON 🤖");
+            });
+            gameModeBtn.addEventListener('mouseenter', () => setIgnoreMouseEvents(false));
+            gameModeBtn.addEventListener('mouseleave', () => setIgnoreMouseEvents(true));
+
+            // Hover effects for the Panel itself so we can click inside it
+            agentPanel.addEventListener('mouseenter', () => setIgnoreMouseEvents(false));
+            agentPanel.addEventListener('mouseleave', () => setIgnoreMouseEvents(true));
+
+            // Start/Stop Logic
+            if (btnStart) {
+                btnStart.addEventListener('click', async () => {
+                    const instruction = agentInput.value.trim();
+                    if (!instruction) {
+                        statusDiv.textContent = "Enter instruction!";
+                        statusDiv.style.color = "yellow";
+                        return;
+                    }
+                    statusDiv.textContent = "Agent Active 🟢";
+                    statusDiv.style.color = "#4ade80";
+                    isGameMode = true;
+                    gameModeBtn.style.background = '#4ade80';
+                    document.body.classList.add('agent-active');
+                    await ipcRenderer.invoke('start-game-agent', instruction);
+                });
+            }
+            if (btnStop) {
+                btnStop.addEventListener('click', async () => {
+                    isGameMode = false;
+                    gameModeBtn.style.background = '#cd5c5c';
+                    document.body.classList.remove('agent-active');
+                    statusDiv.textContent = "Stopped 🔴";
+                    await ipcRenderer.invoke('stop-game-agent');
+                });
+            }
+        }
     }
 
     if (header) {
@@ -125,12 +160,108 @@ document.addEventListener('DOMContentLoaded', async () => {
     ipcRenderer.on('agent-log', (event, msg) => {
         logToScreen("🤖 " + msg);
     });
+
+    ipcRenderer.on('agent-speak', (event, text) => {
+        showBubble(text);
+        speak(text);
+    });
+
+    // --- Draggable Controls Logic ---
+    const controlsArea = document.querySelector('.controls-area');
+    if (controlsArea) {
+        let isDraggingControls = false;
+        let startX, startY, initialLeft, initialTop, initialBottom;
+
+        controlsArea.addEventListener('mousedown', (e) => {
+            // Only drag if clicking the container or background, not the buttons directly
+            // Actually, fine to drag from buttons if needed, but let's prioritize background
+            if (e.target.closest('button')) return;
+
+            isDraggingControls = true;
+            startX = e.clientX;
+            startY = e.clientY;
+
+            const rect = controlsArea.getBoundingClientRect();
+            // We need to switch from 'bottom/left default' to fixed top/left for dragging
+            // Or just compute offsets.
+            // Let's set it to absolute top/left based on current position to start
+            controlsArea.style.bottom = 'auto';
+            controlsArea.style.left = rect.left + 'px';
+            controlsArea.style.top = rect.top + 'px';
+            controlsArea.style.transform = 'none'; // Remove the translateX(-50%)
+
+            initialLeft = rect.left;
+            initialTop = rect.top;
+
+            controlsArea.style.cursor = 'grabbing';
+            ipcRenderer.send('set-ignore-mouse-events', false); // Ensure we keep focus
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDraggingControls) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            const newLeft = initialLeft + dx;
+            const newTop = initialTop + dy;
+
+            controlsArea.style.left = newLeft + 'px';
+            controlsArea.style.top = newTop + 'px';
+
+            // [ORIENTATION] Dynamic switch near edges
+            const threshold = 60; // Distance from edge to trigger vertical
+            const screenWidth = window.innerWidth;
+
+            if (newLeft < threshold || (newLeft + controlsArea.offsetWidth) > (screenWidth - threshold)) {
+                controlsArea.style.flexDirection = 'column';
+                controlsArea.style.padding = '10px 5px';
+            } else {
+                controlsArea.style.flexDirection = 'row';
+                controlsArea.style.padding = '5px 10px';
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (isDraggingControls) {
+                isDraggingControls = false;
+                controlsArea.style.cursor = 'move';
+                // Snap to edges if very close? (Optional polish)
+            }
+        });
+
+        // Ensure transparency management works
+        controlsArea.addEventListener('mouseenter', () => ipcRenderer.send('set-ignore-mouse-events', false));
+        controlsArea.addEventListener('mouseleave', () => {
+            if (!isDraggingControls) ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
+        });
+    }
 });
 
 function cycleRoamMode(btn = null) {
-    if (roamMode === 'FULL') { roamMode = 'BOTTOM'; showBubble("Mode: Bottom Only ⬇️"); if (btn) btn.textContent = "MODE: BTM"; }
-    else if (roamMode === 'BOTTOM') { roamMode = 'NONE'; showBubble("Mode: Hidden 👻"); if (btn) btn.textContent = "MODE: OFF"; }
-    else { roamMode = 'FULL'; showBubble("Mode: Full Screen 🌍"); if (btn) btn.textContent = "MODE: FULL"; }
+    const b = btn || document.getElementById('btn-roam');
+    if (roamMode === 'FULL') {
+        roamMode = 'BOTTOM';
+        showBubble("Bottom Only ⬇️");
+        if (b) {
+            b.innerHTML = '<i class="fas fa-grip-lines"></i>';
+            b.title = "Roam Mode: Bottom Only";
+        }
+    }
+    else if (roamMode === 'BOTTOM') {
+        roamMode = 'NONE';
+        showBubble("Hidden Mode 👻");
+        if (b) {
+            b.innerHTML = '<i class="fas fa-ghost"></i>';
+            b.title = "Roam Mode: Hidden";
+        }
+    }
+    else {
+        roamMode = 'FULL';
+        showBubble("Full Screen 🌍");
+        if (b) {
+            b.innerHTML = '<i class="fas fa-arrows-alt"></i>';
+            b.title = "Roam Mode: Full Screen";
+        }
+    }
 
     // Apply immediate visibility fix
     const catEl = document.getElementById('character');
@@ -149,6 +280,37 @@ function cycleRoamMode(btn = null) {
     } else {
         if (catEl) catEl.style.display = 'block';
         if (humEl) humEl.style.display = 'block';
+    }
+}
+
+function toggleVision(btn) {
+    isVisionActive = !isVisionActive;
+    if (isVisionActive) {
+        btn.style.background = "#4ade80";
+        btn.innerHTML = '<i class="fas fa-eye"></i>';
+        btn.title = "Screen Vision (ON)";
+        showBubble("Vision ON 👁️");
+    } else {
+        btn.style.background = "#666";
+        btn.innerHTML = '<i class="fas fa-eye-slash"></i>';
+        btn.title = "Screen Vision (OFF)";
+        showBubble("Vision OFF 👻");
+    }
+}
+
+function toggleDebug(btn) {
+    isDebugActive = !isDebugActive;
+    const overlay = document.getElementById('debug-overlay');
+    if (isDebugActive) {
+        if (overlay) overlay.style.display = 'flex';
+        btn.style.background = "#f59e0b";
+        btn.title = "Debug Logs (ON)";
+        showBubble("Logs ON 🐞");
+    } else {
+        if (overlay) overlay.style.display = 'none';
+        btn.style.background = "#666";
+        btn.title = "Debug Logs (OFF)";
+        showBubble("Logs OFF 🤫");
     }
 }
 
@@ -201,7 +363,7 @@ let actors = {
 let thoughtTimer = 0;
 let nextThoughtTime = 2000;
 let meowTimer = 0;
-let nextMeowTime = 5000;
+let nextMeowTime = 30000; // [REDUCED] Initial meow delay
 let humanTextTimer = 0;
 let activeHumanThought = null;
 let floatingEmojis = []; // Track active emojis for following
@@ -353,7 +515,8 @@ function updateCat(dt) {
         }
 
         meowTimer += dt;
-        if (meowTimer > nextMeowTime) { meowTimer = 0; nextMeowTime = 8000 + Math.random() * 10000; playRealMeow(); }
+        // [MUTED] Muted random meowing as requested. Only while dragging.
+        // if (meowTimer > nextMeowTime) { meowTimer = 0; nextMeowTime = 30000 + Math.random() * 60000; playRealMeow(); } 
     } else if (pet.state === 'SLEEP') {
         pet.sleepTime += dt;
         if (Math.random() < 0.02) spawnFloatingEmoji("zzz", pet.x + 10, pet.y - 20, "24px", "#3498db");
@@ -361,7 +524,8 @@ function updateCat(dt) {
             pet.state = 'SURPRISE';
             // In Bottom Mode, NO upward jump (vy) to keep linear
             if (roamMode !== 'BOTTOM') pet.vy = -3;
-            playRealMeow();
+            // [MUTED] Muted random meowing after sleep as requested.
+            // playRealMeow();
             setTimeout(() => pickRandomTarget(pet, minY), 1000);
         }
     } else if (pet.state === 'WALK' || pet.state === 'RUN') {
@@ -758,6 +922,8 @@ async function setupAudioRecording() {
 function toggleListening() {
     // [INTERRUPT] Stop speaking immediately when button is clicked
     stopSpeaking();
+    currentRequestId++; // Increment ID to ignore previous in-flight requests
+
     if (actors.human) {
         actors.human.isTalking = false;
         actors.human.state = 'IDLE';
@@ -786,21 +952,32 @@ function stopSpeaking() {
 }
 
 async function processAudioMessage(base64Audio) {
+    const requestId = ++currentRequestId; // Store local copy of current ID
     try {
         const genAI = new GoogleGenerativeAI(geminiKey);
 
-        // --- BEAST MODE: SYSTEM PROMPT ---
-        const systemPrompt = `You are "Glitch", a High-Performance Autonomous Desktop Agent.
+        // --- REFINED SYSTEM PROMPT ---
+        const systemPrompt = `You are "Glitch", a helpful, professional, and slightly sarcastic Desktop AI Companion.
+        
+        IDENTITY:
+        - You are supportive and efficient.
+        - You NEVER use inappropriate, sexual, or offensive language.
+        - You are a companion, not a distractor. Use humor tastefully.
         
         CAPABILITIES:
         1. [FILE SYSTEM] Write/Read code, create projects.
         2. [SHELL] Run terminal commands (npm, git, code).
         3. [BROWSER] Navigate & Search.
-        4. [VISION] See screen.
+        4. [VISION] See screen (ONLY if an image is provided in the message).
+
+        VISION RULES:
+        - If an image IS provided, you can describe the screen or apps.
+        - If NO image is provided, do NOT hallucinate what you see. Inform the user you need to see the screen first if they ask.
         
         BEHAVIOR:
         - If the user asks for a complex task (e.g., "Build a website"), start an AGENT LOOP.
         - You can Execute MULTIPLE steps by returning a JSON ARRAY of objects.
+        - [CRITICAL] ALWAYS include a "speak" action in your array so the user hears what you are doing.
         - Output valid JSON only for actions.
         
         TOOLS (JSON FORMAT):
@@ -808,14 +985,6 @@ async function processAudioMessage(base64Audio) {
         - { "type": "file", "operation": "write", "path": "...", "content": "..." }
         - { "type": "shell", "command": "...", "cwd": "..." }
         - { "type": "speak", "text": "..." }
-        
-        EXAMPLE "Build a React App":
-        [
-          { "type": "speak", "text": "Starting React project..." },
-          { "type": "shell", "command": "npx create-react-app my-app", "cwd": "d:/Projects" },
-          { "type": "file", "operation": "write", "path": "d:/Projects/my-app/README.md", "content": "# My App" },
-          { "type": "shell", "command": "code .", "cwd": "d:/Projects/my-app" }
-        ]
         `;
 
         const model = genAI.getGenerativeModel({ model: GEMINI_MODEL, systemInstruction: systemPrompt });
@@ -830,17 +999,41 @@ async function processAudioMessage(base64Audio) {
         }
 
         // [OPTIMIZATION] History Pruning
-        // Keep only last 10 turns to save tokens
-        if (window.chatSession.history && window.chatSession.history.length > 20) {
-            // Remove oldest, keep first 2 (Context) + last 18
-            const keep = window.chatSession.history.slice(window.chatSession.history.length - 18);
+        // Keep only last 10 messages (5 user-model turns) to save tokens and reduce request size
+        if (window.chatSession.history && window.chatSession.history.length > 10) {
+            // Remove oldest, keep first 2 (Context) + last 8
+            const keep = window.chatSession.history.slice(window.chatSession.history.length - 8);
             const context = window.chatSession.history.slice(0, 2);
             window.chatSession.history = [...context, ...keep];
-            logToScreen("🧹 History Pruned to save credits.");
+            logToScreen("🧹 History Pruned (max 10 msgs).");
         }
 
-        const audioPart = { inlineData: { data: base64Audio, mimeType: "audio/mp3" } };
-        const result = await window.chatSession.sendMessage([audioPart]);
+        // [VISION] Capture screen ONLY if vision is active toggle is on
+        const userMsgParts = [{ inlineData: { data: base64Audio, mimeType: "audio/mp3" } }];
+
+        if (isVisionActive) {
+            logToScreen("📸 Vision Active: Capturing Clean Screen...");
+            const screenshot = await ipcRenderer.invoke('capture-clean', {
+                width: 1024,
+                height: 576,
+                saveToVision: true
+            });
+
+            if (screenshot) {
+                userMsgParts.unshift({
+                    inlineData: { data: screenshot, mimeType: "image/png" }
+                });
+            }
+        }
+
+        const result = await window.chatSession.sendMessage(userMsgParts);
+
+        // CHECK: If request was interrupted during API call, STOP HERE
+        if (requestId !== currentRequestId) {
+            logToScreen("⏹️ Request Interrupted. Silent.");
+            return;
+        }
+
         const responseText = result.response.text();
         logToScreen("🤖 " + responseText);
 
@@ -902,9 +1095,19 @@ async function processAudioMessage(base64Audio) {
 
 async function speak(text) {
     try {
-        logToScreen("🗣️ " + text);
-        if (!elevenKey) { logToScreen("❌ No ElevenLabs Key"); return; } // [FIX] Key check
+        logToScreen("🗣️ Processing Speech...");
+        if (!elevenKey) {
+            logToScreen("❌ No ElevenLabs Key");
+            fallbackSpeak(text);
+            return;
+        }
+        if (!voiceId) {
+            logToScreen("⚠️ No Voice ID, using fallback.");
+            fallbackSpeak(text);
+            return;
+        }
 
+        logToScreen("📡 Sending to ElevenLabs...");
         const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'xi-api-key': elevenKey },

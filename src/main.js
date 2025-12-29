@@ -1,6 +1,7 @@
 // src/main.js - Electron Main Process
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 
 let mainWindow;
@@ -83,16 +84,39 @@ const Automation = require('./automation');
 const GameAgent = require('./ai/GameAgent');
 
 let gameAgentInstance = null;
+
+// [NEW] Clean Capture Logic for the Agent
+async function cleanCapture(options) {
+  if (!mainWindow) return null;
+
+  // Hide overlay to prevent AI from clicking its own UI
+  mainWindow.setOpacity(0);
+  await new Promise(r => setTimeout(r, 60)); // Wait for redraw
+
+  const { captureScreen } = require('./services/ScreenObserver');
+  const img = await captureScreen(options);
+
+  mainWindow.setOpacity(1);
+  return img;
+}
+
 function getGameAgent() {
   if (!gameAgentInstance) {
     gameAgentInstance = new GameAgent(
       process.env.GEMINI_API_KEY,
       (msg) => {
-        // Logger callback: Send to all windows
+        // Logger: Send to all windows for log display
         BrowserWindow.getAllWindows().forEach(win => {
           win.webContents.send('agent-log', msg);
         });
-        console.log(msg); // Keep server log too
+        console.log(msg);
+      },
+      cleanCapture,
+      (text) => {
+        // Speaker: Send to all windows for TTS
+        BrowserWindow.getAllWindows().forEach(win => {
+          win.webContents.send('agent-speak', text);
+        });
       }
     );
   }
@@ -108,6 +132,36 @@ ipcMain.handle('get-env', (event, key) => {
 ipcMain.handle('take-screenshot', async () => {
   const { captureScreen } = require('./services/ScreenObserver');
   return await captureScreen();
+});
+
+// [NEW] Clean Capture: Hide overlay briefly, capture, then show
+ipcMain.handle('capture-clean', async (event, options = { width: 1024, height: 576, saveToVision: false }) => {
+  const { captureScreen } = require('./services/ScreenObserver');
+  const win = BrowserWindow.fromWebContents(event.sender);
+
+  if (win) {
+    win.setOpacity(0); // Faster than hide()
+    // Give OS a tiny bit of time to redraw (60ms is usually enough)
+    await new Promise(r => setTimeout(r, 60));
+    const img = await captureScreen(options);
+    win.setOpacity(1);
+
+    // [NEW] Logging for voice-vision if requested
+    if (options.saveToVision && img) {
+      try {
+        const visionDir = path.join(__dirname, '..', 'vision');
+        if (!fs.existsSync(visionDir)) fs.mkdirSync(visionDir, { recursive: true });
+        const fileName = `voice-vision-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
+        fs.writeFileSync(path.join(visionDir, fileName), Buffer.from(img, 'base64'));
+        console.log(`📸 Voice Vision saved: ${fileName}`);
+      } catch (err) {
+        console.error("Failed to save voice vision:", err);
+      }
+    }
+
+    return img;
+  }
+  return null;
 });
 
 // Browser Automation Handler

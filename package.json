@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
+    "@nut-tree-fork/nut-js": "^4.2.6",
     "axios": "^1.6.0",
     "dotenv": "^16.3.1",
     "node-fetch": "^2.7.0",

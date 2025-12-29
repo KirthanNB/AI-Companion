@@ -2,32 +2,92 @@ const { spawn } = require('child_process');
 const path = require('path');
 
 let pythonProcess = null;
+let bridgeReady = false;
 
 function startPythonBridge() {
     if (pythonProcess) return;
 
     const scriptPath = path.join(__dirname, 'input_bridge.py');
-    pythonProcess = spawn('python', [scriptPath]); // Assumes 'python' is in PATH
 
-    pythonProcess.stdout.on('data', (data) => {
-        // console.log('Python Input Bridge:', data.toString());
-    });
+    // Try multiple Python commands (Windows compatibility)
+    const pythonCommands = ['python', 'python3', 'py'];
+    let attemptIndex = 0;
 
-    pythonProcess.stderr.on('data', (data) => {
-        console.error('Python Bridge Error:', data.toString());
-    });
+    function tryNextPython() {
+        if (attemptIndex >= pythonCommands.length) {
+            console.error('❌ Failed to start Python bridge. Install Python and pydirectinput.');
+            return;
+        }
 
-    pythonProcess.on('close', (code) => {
-        console.log(`Python bridge process exited with code ${code}`);
-        pythonProcess = null;
-        // Auto-restart if it crashed?
-    });
+        const cmd = pythonCommands[attemptIndex];
+        console.log(`🐍 Attempting to start Python bridge with: ${cmd}`);
+
+        try {
+            pythonProcess = spawn(cmd, [scriptPath]);
+
+            pythonProcess.stdout.on('data', (data) => {
+                const output = data.toString().trim();
+                if (output.includes('success')) {
+                    bridgeReady = true;
+                }
+                console.log('Python Bridge:', output);
+            });
+
+            pythonProcess.stderr.on('data', (data) => {
+                const error = data.toString();
+                console.error('Python Bridge Error:', error);
+
+                // If it's a "not found" error, try next command
+                if (error.includes('not found') || error.includes('No module')) {
+                    pythonProcess.kill();
+                    pythonProcess = null;
+                    attemptIndex++;
+                    setTimeout(tryNextPython, 100);
+                }
+            });
+
+            pythonProcess.on('close', (code) => {
+                console.log(`Python bridge exited with code ${code}`);
+                pythonProcess = null;
+                bridgeReady = false;
+            });
+
+            pythonProcess.on('error', (err) => {
+                console.error(`Failed to start ${cmd}:`, err.message);
+                pythonProcess = null;
+                attemptIndex++;
+                setTimeout(tryNextPython, 100);
+            });
+
+            // Give it a moment to fail or succeed
+            setTimeout(() => {
+                if (pythonProcess && !pythonProcess.killed) {
+                    console.log(`✅ Python bridge started successfully with ${cmd}`);
+                }
+            }, 500);
+
+        } catch (err) {
+            console.error(`Error spawning ${cmd}:`, err);
+            attemptIndex++;
+            setTimeout(tryNextPython, 100);
+        }
+    }
+
+    tryNextPython();
 }
 
 function sendCommand(command) {
-    if (!pythonProcess) startPythonBridge();
-    if (pythonProcess) {
+    if (!pythonProcess) {
+        console.warn('⚠️ Python bridge not running. Attempting to start...');
+        startPythonBridge();
+        return;
+    }
+
+    try {
         pythonProcess.stdin.write(JSON.stringify(command) + '\n');
+        console.log('📤 Sent to Python:', command.type);
+    } catch (err) {
+        console.error('Failed to send command:', err);
     }
 }
 
