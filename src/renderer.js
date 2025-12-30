@@ -1132,7 +1132,7 @@ async function processAudioMessage(base64Audio) {
         speak(responseText);
     } catch (e) {
         logToScreen("❌ Error: " + e.message);
-        showBubble("Error 😵");
+        showBubble(e.message);
     }
 }
 
