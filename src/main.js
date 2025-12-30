@@ -102,23 +102,31 @@ async function cleanCapture(options) {
 
 function getGameAgent() {
   if (!gameAgentInstance) {
-    gameAgentInstance = new GameAgent(
-      process.env.GEMINI_API_KEY,
-      (msg) => {
-        // Logger: Send to all windows for log display
-        BrowserWindow.getAllWindows().forEach(win => {
-          win.webContents.send('agent-log', msg);
-        });
-        console.log(msg);
-      },
-      cleanCapture,
-      (text) => {
-        // Speaker: Send to all windows for TTS
-        BrowserWindow.getAllWindows().forEach(win => {
-          win.webContents.send('agent-speak', text);
-        });
-      }
-    );
+    try {
+      console.log('🎯 Creating GameAgent instance...');
+      gameAgentInstance = new GameAgent(
+        process.env.GEMINI_API_KEY,
+        (msg) => {
+          // Logger: Send to all windows for log display
+          BrowserWindow.getAllWindows().forEach(win => {
+            win.webContents.send('agent-log', msg);
+          });
+          console.log(msg);
+        },
+        cleanCapture,
+        (text) => {
+          // Speaker: Send to all windows for TTS
+          BrowserWindow.getAllWindows().forEach(win => {
+            win.webContents.send('agent-speak', text);
+          });
+        }
+      );
+      console.log('✅ GameAgent created successfully');
+    } catch (error) {
+      console.error('❌ Failed to create GameAgent:', error.message);
+      console.error('Stack:', error.stack);
+      throw error;
+    }
   }
   return gameAgentInstance;
 }
@@ -244,6 +252,46 @@ ipcMain.handle('perform-action', async (event, action) => {
   } catch (error) {
     console.error('Automation failed:', error);
     return "Failed: " + error.message;
+  }
+});
+
+// Project Creation Handler
+ipcMain.handle('create-project', async (event, { name, description, projectType }) => {
+  try {
+    console.log('🚀 Creating project:', name, projectType);
+
+    const ProjectScaffoldService = require('./services/ProjectScaffoldService');
+    const scaffoldService = new ProjectScaffoldService();
+
+    // Auto-detect project type if not provided
+    const detectedType = projectType || scaffoldService.detectProjectType(description || name);
+
+    // Create the project
+    const result = scaffoldService.createProject(name, detectedType, description);
+
+    if (!result.success) {
+      return { success: false, error: result.error };
+    }
+
+    console.log('✅ Project created at:', result.projectPath);
+
+    // Open in VS Code and trigger AI
+    const EnhancedAutomation = require('./services/EnhancedAutomationService');
+    const automation = new EnhancedAutomation();
+
+    console.log('📂 Opening in VS Code...');
+    const vscodeResult = await automation.openProjectInVSCode(result.projectPath);
+
+    return {
+      success: true,
+      projectPath: result.projectPath,
+      projectType: detectedType,
+      message: `Project "${name}" created and opened in VS Code with AI assistant ready!`,
+      vscodeResult
+    };
+  } catch (error) {
+    console.error('Project creation failed:', error);
+    return { success: false, error: error.message };
   }
 });
 

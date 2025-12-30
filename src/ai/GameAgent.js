@@ -23,9 +23,9 @@ class GameAgent {
         this.enhancedAuto = new EnhancedAutomationService();
 
         // Rate Limiting & Optimization State
-        this.baseDelay = 30000;     // [EMERGENCY] Increased to 30s to prevent daily limit
-        this.maxDelay = 60000;      // Max delay when idle (60s)
-        this.adaptiveDelay = 0;
+        this.baseDelay = 3000;      // Base delay between actions (3s - responsive)
+        this.maxDelay = 10000;      // Max delay when idle (10s)
+        this.currentDelay = this.baseDelay;
         this.staticCounter = 0;     // Count how many times screen was static
         this.lastImage = null;      // For deduplication
         this.isExecuting = false;   // Guard for long-running actions
@@ -307,24 +307,47 @@ class GameAgent {
       - Example: If WhatsApp fails, say "I couldn't send the WhatsApp message because..."
       
       CRITICAL - CONTEXT AWARENESS:
-      - When user says "tell [person]" or "introduce yourself to [person]" → Use WhatsApp
-      - When user says "message [person]" or "send to [person]" → Use WhatsApp
-      - Infer the communication medium from context
-      - Examples:
-        ✅ "introduce yourself to Raju" → Send WhatsApp message
-        ✅ "tell mom I'll be late" → Send WhatsApp to "mom"
+      - If user says "message [person]" or "tell [person]" or "introduce yourself to [person]":
+        ✅ Use WhatsApp (person-to-person communication)
+        ❌ NOT Notepad (that's for notes, not messaging)
+        Example:
+        ✅ "introduce yourself to Raju" → send_whatsapp to Raju
         ❌ "introduce yourself to Raju" → Open Notepad (wrong!)
       
-      STRATEGIES (USE THESE):
-      - CODING: DO NOT CODE. Delegate to IDE AI (VS Code/Cursor).
-        1. Open IDE: { "type": "launch_app", "app": "code" }
-        2. Open Chat: { "type": "press_key", "key": "ctrl+i" } (VS Code) or "ctrl+k" (Cursor)
-        3. Type request & Enter.
-      - WHATSAPP (RELIABLE):
-        Use: { "type": "send_whatsapp", "contact": "Rohith M", "message": "Your message here" }
-      - FILE SAVING:
-        1. Type content
-        2. Save: { "type": "press_key", "key": "ctrl+s" } -> Type filename -> Enter.
+      🚨 CRITICAL - WEBSITE/CODING REQUESTS:
+      For ANY website, app, or coding request, you MUST use create_project action FIRST.
+      DO NOT use 'file', 'shell', or any other action to write code.
+      
+      Available Actions:
+      
+      1. CREATE PROJECT (For ALL coding/website requests - USE THIS FIRST):
+         { "type": "create_project", "name": "project-folder-name", "description": "detailed requirements" }
+         This is your ONLY action for websites/apps. It will:
+         - Create folder and README.md
+         - Open VS Code  
+         - Activate IDE AI
+         - IDE AI builds the project (NOT YOU)
+         
+      2. GENERATE IMAGE:
+         { "type": "generate_image", "prompt": "detailed description" }
+         
+      3. FILE OPERATIONS (ONLY for non-code files like .txt, .md notes):
+         { "type": "file", "operation": "write", "path": "file.txt", "content": "..." }
+         ⚠️ DO NOT use this for .html, .css, .js, .py, or ANY code files
+         
+      4. TYPING & KEYBOARD:
+         { "type": "type", "text": "..." }
+         { "type": "press_key", "key": "ctrl+s" }
+         
+      5. MOUSE:
+         { "type": "mouse_move", "x": 500, "y": 300 }
+         { "type": "click" }
+         
+      6. LAUNCH APP:
+         { "type": "launch_app", "app": "notepad" }
+         
+      7. STOP:
+         { "type": "stop", "reason": "task complete" }
       
       Actions (MUST BE JSON ARRAY):
       
@@ -470,25 +493,40 @@ class GameAgent {
                     this.log('🚀 Launching WhatsApp Desktop...');
                     await this.enhancedAuto.launchApp('whatsapp');
 
-                    this.log('🔍 Opening search (Ctrl+F)...');
+                    // [CRITICAL] Wait longer for WhatsApp to fully load and be ready
+                    this.log('⏳ Waiting for WhatsApp to fully load (10 seconds)...');
+                    await new Promise(r => setTimeout(r, 10000));
+
+                    // Use existing focusWindow to bring WhatsApp to foreground
+                    this.log('🎯 Focusing WhatsApp window...');
+                    try {
+                        await this.enhancedAuto.focusWindow('whatsapp');
+                        this.log('✅ WhatsApp window focused');
+                        await new Promise(r => setTimeout(r, 1000));
+                    } catch (err) {
+                        this.log(`⚠️ Could not focus WhatsApp window: ${err.message}`);
+                        // Continue anyway
+                    }
+
+                    this.log('🔍 Sending Ctrl+F...');
                     await this.enhancedAuto.pressKey('ctrl+f');
-                    await new Promise(r => setTimeout(r, 800));
-
-                    this.log(`⌨️ Typing contact: ${action.contact}`);
-                    await this.enhancedAuto.type(action.contact);
-                    await new Promise(r => setTimeout(r, 1500));
-
-                    this.log('↩️ Opening chat (Enter)...');
-                    await this.enhancedAuto.pressKey('enter');
                     await new Promise(r => setTimeout(r, 1200));
 
-                    this.log(`💬 Typing message...`);
-                    await this.enhancedAuto.type(action.message);
-                    await new Promise(r => setTimeout(r, 500));
+                    this.log(`⌨️ Typing: "${action.contact}"`);
+                    await this.enhancedAuto.type(action.contact);
+                    await new Promise(r => setTimeout(r, 2000));
 
-                    this.log('📤 Sending (Enter)...');
+                    this.log('↩️ Pressing Enter...');
                     await this.enhancedAuto.pressKey('enter');
-                    await new Promise(r => setTimeout(r, 1000));
+                    await new Promise(r => setTimeout(r, 1500));
+
+                    this.log(`💬 Typing message: "${action.message}"`);
+                    await this.enhancedAuto.type(action.message);
+                    await new Promise(r => setTimeout(r, 800));
+
+                    this.log('📤 Sending with Enter...');
+                    await this.enhancedAuto.pressKey('enter');
+                    await new Promise(r => setTimeout(r, 1500));
 
                     this.speak(`Message sent to ${action.contact} on WhatsApp`);
                     this.history.push(`✅ WhatsApp: Sent to ${action.contact}`);
@@ -498,6 +536,137 @@ class GameAgent {
                     const errorMsg = `Failed to send WhatsApp to ${action.contact}: ${error.message}`;
                     this.speak(errorMsg);
                     this.history.push(`❌ WhatsApp FAILED: ${error.message}`);
+                }
+                break;
+            case 'generate_image':
+                this.log(`🎨 Generating image: "${action.prompt}"`);
+                try {
+                    this.speak('Generating image, please wait...');
+
+                    // Use Pollinations.ai free API (no key needed)
+                    const https = require('https');
+                    const encodedPrompt = encodeURIComponent(action.prompt);
+                    const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}`;
+
+                    this.log(`🌐 Fetching image from: ${imageUrl}`);
+
+                    // Download image
+                    const imageData = await new Promise((resolve, reject) => {
+                        https.get(imageUrl, (response) => {
+                            const chunks = [];
+                            response.on('data', (chunk) => chunks.push(chunk));
+                            response.on('end', () => resolve(Buffer.concat(chunks)));
+                            response.on('error', reject);
+                        }).on('error', reject);
+                    });
+
+                    // Save to file
+                    const imageDir = path.join(__dirname, '../../generated_images');
+                    if (!fs.existsSync(imageDir)) {
+                        fs.mkdirSync(imageDir, { recursive: true });
+                    }
+
+                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                    const filename = `image-${timestamp}.jpg`;
+                    const filepath = path.join(imageDir, filename);
+
+                    fs.writeFileSync(filepath, imageData);
+
+                    this.log(`✅ Image saved to: ${filepath}`);
+                    this.speak('Image generated successfully');
+
+                    // Open the image
+                    await this.enhancedAuto.launchApp(`"${filepath}"`);
+
+                    this.history.push(`✅ Generated image: ${action.prompt}`);
+                } catch (error) {
+                    this.log(`❌ Image generation error: ${error.message}`);
+                    this.speak(`Failed to generate image: ${error.message}`);
+                    this.history.push(`❌ Image generation FAILED: ${error.message}`);
+                }
+                break;
+            case 'create_project':
+                this.log(`📁 Creating project: ${action.name}`);
+                try {
+                    this.speak(`Creating project ${action.name} and setting up AI delegation`);
+
+                    const projectPath = path.join(process.cwd(), action.name);
+
+                    // Create project folder
+                    if (!fs.existsSync(projectPath)) {
+                        fs.mkdirSync(projectPath, { recursive: true });
+                        this.log(`✅ Created folder: ${projectPath}`);
+                    }
+
+                    // Create README.md with detailed prompts for IDE AI
+                    const readme = `# ${action.name}
+
+## Project Requirements
+
+${action.description}
+
+## Instructions for AI Assistant (Copilot/Cursor)
+
+You are building this project. Please:
+
+1. **Create the necessary files**:
+   - index.html (main HTML structure)
+   - style.css (modern, beautiful styling)
+   - script.js (interactivity and animations)
+   - Any additional files needed
+
+2. **Design Guidelines**:
+   - Use modern, premium aesthetics
+   - Implement smooth animations
+   - Mobile-responsive design
+   - Clean, maintainable code
+   - Add comments for complex logic
+
+3. **Requirements**:
+${action.description}
+
+4. **Tech Stack**:
+   - HTML5
+   - CSS3 (with modern features like grid, flexbox, animations)
+   - Vanilla JavaScript (or specify if framework needed)
+
+5. **Deliverables**:
+   - Fully functional website
+   - Professional design
+   - Cross-browser compatible
+   - Optimized performance
+
+**Start by creating the basic file structure and implementing the core features.**
+`;
+
+                    const readmePath = path.join(projectPath, 'README.md');
+                    fs.writeFileSync(readmePath, readme);
+                    this.log(`✅ Created README.md with AI prompts`);
+
+                    // Open VS Code in this folder
+                    await this.enhancedAuto.launchApp(`code "${projectPath}"`);
+                    await new Promise(r => setTimeout(r, 3000)); // Wait for VS Code to open
+
+                    this.log(`✅ Opened VS Code`);
+
+                    // Open AI chat in VS Code (Ctrl+I for Copilot or Ctrl+K for Cursor)
+                    await this.enhancedAuto.pressKey('ctrl+i'); // Try Copilot first
+                    await new Promise(r => setTimeout(r, 500));
+
+                    // Type instruction to IDE AI
+                    const idePrompt = `Read the README.md file in this project and implement all the requirements. Start by creating index.html, style.css, and script.js with the features described.`;
+                    await this.enhancedAuto.type(idePrompt);
+                    await new Promise(r => setTimeout(r, 500));
+                    await this.enhancedAuto.pressKey('enter');
+
+                    this.log(`✅ Delegated to IDE AI`);
+                    this.speak(`Project ${action.name} created. VS Code AI is building it now.`);
+                    this.history.push(`✅ Created project and delegated to IDE AI: ${action.name}`);
+
+                } catch (error) {
+                    this.log(`❌ Project creation error: ${error.message}`);
+                    this.speak(`Failed to create project: ${error.message}`);
+                    this.history.push(`❌ Project creation FAILED: ${error.message}`);
                 }
                 break;
             case 'system':

@@ -966,10 +966,17 @@ async function processAudioMessage(base64Audio) {
         2. [SHELL] Run terminal commands (npm, git, code).
         3. [BROWSER] Navigate & Search.
         4. [VISION] See screen (ONLY if an image is provided in the message).
+        5. [PROJECT CREATION] Create developer projects with scaffolding, README, and auto-open in VS Code with AI assistant.
 
         VISION RULES:
         - If an image IS provided, you can describe the screen or apps.
         - If NO image is provided, do NOT hallucinate what you see. Inform the user you need to see the screen first if they ask.
+        
+        PROJECT CREATION RULES:
+        - When user asks to build/create websites, apps, APIs, or any developer project, use the "project" action.
+        - This will: 1) Create project folder with structure, 2) Generate comprehensive README.md, 3) Open in VS Code, 4) Trigger Ctrl+I for AI assistance.
+        - Supported project types: website, nextjs, api, python, vue, electron, mobile, generic.
+        - Examples of project requests: "build a portfolio website", "create a React app", "make an API for users", "python web scraper"
         
         BEHAVIOR:
         - If the user asks for a complex task (e.g., "Build a website"), start an AGENT LOOP.
@@ -982,6 +989,7 @@ async function processAudioMessage(base64Audio) {
         - { "type": "file", "operation": "write", "path": "...", "content": "..." }
         - { "type": "shell", "command": "...", "cwd": "..." }
         - { "type": "speak", "text": "..." }
+        - { "type": "project", "name": "...", "description": "...", "projectType": "website|nextjs|api|python|..." }
         `;
 
         const model = genAI.getGenerativeModel({ model: GEMINI_MODEL, systemInstruction: systemPrompt });
@@ -1056,6 +1064,30 @@ async function processAudioMessage(base64Audio) {
                             showBubble(action.text);
                             speak(action.text);
                             // Do not return, continue to next action (e.g., Speak then Do)
+                            continue;
+                        }
+
+                        // [PROJECT CREATION] Handle project creation
+                        if (action.type === 'project') {
+                            logToScreen(`🚀 Creating project: ${action.name}`);
+                            showBubble(`Creating ${action.name}...`);
+
+                            const projectResult = await ipcRenderer.invoke('create-project', {
+                                name: action.name,
+                                description: action.description || '',
+                                projectType: action.projectType || null
+                            });
+
+                            if (projectResult.success) {
+                                logToScreen(`✅ ${projectResult.message}`);
+                                showBubble(`Project ready! Opening in VS Code...`);
+                            } else {
+                                logToScreen(`❌ Project creation failed: ${projectResult.error}`);
+                                showBubble(`Failed to create project: ${projectResult.error}`);
+                            }
+
+                            // Wait a bit before continuing
+                            await new Promise(r => setTimeout(r, 2000));
                             continue;
                         }
 

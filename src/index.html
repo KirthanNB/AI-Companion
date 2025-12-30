@@ -51,59 +51,160 @@
         </div>
     </div>
 
-    <!-- NEW: Agent Task Panel -->
+    <!-- NEW: Agent Task Panel - Modern Design -->
     <div id="agent-panel" style="
             display: none;
             position: fixed;
-            top: 250px;
+            top: 200px;
             right: 20px;
-            width: 250px;
-            background: rgba(0, 0, 0, 0.8);
-            border: 1px solid #4ade80;
-            border-radius: 8px;
-            padding: 10px;
+            width: 350px;
+            background: linear-gradient(135deg, rgba(20, 20, 35, 0.95), rgba(40, 20, 60, 0.95));
+            backdrop-filter: blur(10px);
+            border: 2px solid transparent;
+            background-clip: padding-box;
+            border-radius: 16px;
+            padding: 24px;
             z-index: 10000;
             color: white;
-            font-family: sans-serif;
-            box-shadow: 0 0 10px rgba(74, 222, 128, 0.3);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(74, 222, 128, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
         ">
-        <h3 style="margin: 0 0 10px 0; font-size: 14px; color: #4ade80;">🤖 Desktop Agent</h3>
-        <textarea id="agent-input" placeholder="e.g. 'Open Notepad and type Hello'..." style="
+        <div style="display: flex; align-items: center; margin-bottom: 20px;">
+            <div style="
+                width: 40px;
+                height: 40px;
+                background: linear-gradient(135deg, #4ade80, #22d3ee);
+                border-radius: 12px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 20px;
+                margin-right: 12px;
+                box-shadow: 0 4px 12px rgba(74, 222, 128, 0.4);
+            ">🤖</div>
+            <div>
+                <h3
+                    style="margin: 0; font-size: 18px; font-weight: 700; background: linear-gradient(90deg, #4ade80, #22d3ee); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
+                    Desktop Agent</h3>
+                <p style="margin: 2px 0 0 0; font-size: 11px; color: rgba(255, 255, 255, 0.6);">AI-Powered Automation
+                </p>
+            </div>
+        </div>
+
+        <textarea id="agent-input" placeholder="✨ Type your command... eg: Generating images/sending messages etc...'" style="
                 width: 100%;
-                height: 60px;
-                background: #333;
-                border: 1px solid #555;
+                height: 90px;
+                background: rgba(0, 0, 0, 0.4);
+                border: 1px solid rgba(74, 222, 128, 0.3);
                 color: white;
-                border-radius: 4px;
-                padding: 5px;
-                font-size: 12px;
+                border-radius: 10px;
+                padding: 12px;
+                font-size: 13px;
                 resize: none;
-                margin-bottom: 8px;
-            "></textarea>
-        <div style="display: flex; gap: 5px;">
+                margin-bottom: 16px;
+                font-family: 'Consolas', monospace;
+                transition: all 0.3s ease;
+                box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+            "
+            onfocus="this.style.borderColor='rgba(74, 222, 128, 0.8)'; this.style.boxShadow='inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 0 3px rgba(74, 222, 128, 0.2)'"
+            onblur="this.style.borderColor='rgba(74, 222, 128, 0.3)'; this.style.boxShadow='inset 0 2px 4px rgba(0, 0, 0, 0.3)'"></textarea>
+
+        <div style="display: flex; gap: 12px; margin-bottom: 16px;">
             <button id="btn-start-agent" style="
                     flex: 1;
-                    background: #4ade80;
-                    color: black;
+                    background: linear-gradient(135deg, #4ade80, #22d3ee);
+                    color: #000;
                     border: none;
-                    padding: 5px;
-                    border-radius: 4px;
+                    padding: 12px 20px;
+                    border-radius: 10px;
                     cursor: pointer;
-                    font-weight: bold;
-                ">Start</button>
+                    font-weight: 700;
+                    font-size: 14px;
+                    transition: all 0.2s ease;
+                    box-shadow: 0 4px 12px rgba(74, 222, 128, 0.3);
+                    position: relative;
+                    overflow: hidden;
+                "
+                onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 16px rgba(74, 222, 128, 0.5)'"
+                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(74, 222, 128, 0.3)'">
+                <span style="position: relative; z-index: 1;">▶ Start</span>
+            </button>
             <button id="btn-stop-agent" style="
                     flex: 1;
-                    background: #ef4444;
+                    background: linear-gradient(135deg, #ef4444, #dc2626);
                     color: white;
                     border: none;
-                    padding: 5px;
-                    border-radius: 4px;
+                    padding: 12px 20px;
+                    border-radius: 10px;
                     cursor: pointer;
-                    font-weight: bold;
-                ">Stop</button>
+                    font-weight: 700;
+                    font-size: 14px;
+                    transition: all 0.2s ease;
+                    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+                "
+                onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 16px rgba(239, 68, 68, 0.5)'"
+                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(239, 68, 68, 0.3)'">
+                ■ Stop
+            </button>
         </div>
-        <div id="agent-status" style="margin-top: 8px; font-size: 11px; color: #aaa;">Ready.</div>
+
+        <div id="agent-status" style="
+            padding: 10px 14px;
+            background: rgba(74, 222, 128, 0.1);
+            border-left: 3px solid #4ade80;
+            border-radius: 8px;
+            font-size: 12px;
+            color: #4ade80;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        ">
+            <span style="
+                width: 8px;
+                height: 8px;
+                background: #4ade80;
+                border-radius: 50%;
+                box-shadow: 0 0 8px rgba(74, 222, 128, 0.8);
+                animation: pulse 2s infinite;
+            "></span>
+            <span>Ready to Execute</span>
+        </div>
     </div>
+
+    <style>
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.6;
+                transform: scale(1.1);
+            }
+        }
+
+        #agent-panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            border-radius: 16px;
+            padding: 2px;
+            background: linear-gradient(135deg, #4ade80, #22d3ee, #a78bfa);
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            opacity: 0.6;
+            pointer-events: none;
+        }
+    </style>
 
     <!-- Floating UI: Chat Log -->
     <div class="chat-log" id="chat-log" style="z-index: 9998;"></div>

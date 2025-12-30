@@ -249,6 +249,73 @@ class EnhancedAutomationService {
         await this.pressKey('enter');
         await new Promise(r => setTimeout(r, 2000)); // Wait for command
     }
+
+    /**
+     * Open a folder in VS Code
+     */
+    async openInVSCode(folderPath) {
+        try {
+            // Use 'code' command to open folder in VS Code
+            const command = `code "${folderPath}"`;
+            await execPromise(command);
+
+            // Wait for VS Code to open and load the folder
+            await new Promise(r => setTimeout(r, 3000));
+
+            return { success: true, message: `Opened ${folderPath} in VS Code` };
+        } catch (error) {
+            console.error('Failed to open VS Code:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * Trigger VS Code AI assistant (Ctrl+I)
+     */
+    async triggerVSCodeAI() {
+        try {
+            // Focus VS Code window first
+            await this.focusWindow('Visual Studio Code');
+
+            // Wait for focus
+            await new Promise(r => setTimeout(r, 500));
+
+            // Send Ctrl+I to trigger AI assistant
+            await this.pressKey('ctrl+i');
+
+            return { success: true, message: 'Triggered VS Code AI assistant (Ctrl+I)' };
+        } catch (error) {
+            console.error('Failed to trigger VS Code AI:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * Open folder in VS Code and trigger AI assistant
+     */
+    async openProjectInVSCode(folderPath) {
+        try {
+            // Step 1: Open folder in VS Code
+            console.log(`Opening ${folderPath} in VS Code...`);
+            const openResult = await this.openInVSCode(folderPath);
+
+            if (!openResult.success) {
+                return openResult;
+            }
+
+            // Step 2: Trigger AI assistant
+            console.log('Triggering VS Code AI assistant...');
+            const aiResult = await this.triggerVSCodeAI();
+
+            return {
+                success: true,
+                message: `Opened project in VS Code and triggered AI assistant`
+            };
+        } catch (error) {
+            console.error('Failed to open project in VS Code:', error);
+            return { success: false, error: error.message };
+        }
+    }
 }
 
 module.exports = EnhancedAutomationService;
