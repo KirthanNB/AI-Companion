@@ -358,11 +358,36 @@ ipcMain.handle('save-setup-info', async (event, data) => {
   return true;
 });
 
+// [NEW] Allow Setup Wizard to read existing keys for editing
+ipcMain.handle('get-saved-credentials', async () => {
+  const CredentialService = require('./services/CredentialService');
+  return await CredentialService.loadCredentials();
+});
+
 ipcMain.on('setup-complete', () => {
   if (setupWindow) {
     setupWindow.close();
     createMainWindow();
   }
+});
+
+ipcMain.handle('reset-credentials', async () => {
+  const CredentialService = require('./services/CredentialService');
+  CredentialService.clearCredentials();
+  console.log('🧹 Credentials cleared. Relaunching...');
+  app.relaunch();
+  app.exit(0);
+});
+
+ipcMain.handle('open-settings', () => {
+  console.log('⚙️ Opening settings (Setup Wizard)...');
+  createSetupWindow();
+  if (mainWindow) mainWindow.close();
+});
+
+ipcMain.handle('quit-app', () => {
+  console.log('👋 Quitting app...');
+  app.quit();
 });
 
 console.log('✅ Electron app initialized');

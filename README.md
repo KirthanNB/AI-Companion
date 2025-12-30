@@ -45,8 +45,8 @@ AI Desktop Companion is not just a chatbot; it's a fully autonomous agent that l
 
 1.  **Clone the repository**
     ```bash
-    git clone https://github.com/YourUsername/ai-companion.git
-    cd ai-companion
+    git clone https://github.com/KirthanNB/AI-Companion.git
+    cd AI-Companion
     ```
 
 2.  **Install dependencies**

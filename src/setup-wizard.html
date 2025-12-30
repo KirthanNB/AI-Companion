@@ -125,14 +125,33 @@
     <script>
         const { ipcRenderer, shell } = require('electron');
 
+        // [NEW] Check for existing keys on load
+        window.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const creds = await ipcRenderer.invoke('get-saved-credentials');
+                if (creds && creds.hasGeminiKey) {
+                    // We can't actually retrieve the raw passwords from store if we hashed them? 
+                    // Wait, electron-store usually stores plain text unless encryption is used.
+                    // Assuming we can read them back for editing since it's a local app.
+                    if (creds.geminiKey) document.getElementById('geminiKey').value = creds.geminiKey;
+                    if (creds.elevenKey) document.getElementById('elevenKey').value = creds.elevenKey;
+                    if (creds.elevenVoice) document.getElementById('voiceId').value = creds.elevenVoice;
+                    document.querySelector('h1').textContent = "Settings ⚙️";
+                    document.querySelector('button').textContent = "Update & Restart";
+                }
+            } catch (e) {
+                console.log("No existing creds found to populate.");
+            }
+        });
+
         function openHelp() {
-            shell.openExternal('https://github.com/YourUsername/ai-companion#prerequisites');
+            shell.openExternal('https://github.com/KirthanNB/AI-Companion#prerequisites');
         }
 
         async function saveAndStart() {
-            const geminiKey = document.getElementById('geminiKey').value;
-            const elevenKey = document.getElementById('elevenKey').value;
-            const voiceId = document.getElementById('voiceId').value;
+            const geminiKey = document.getElementById('geminiKey').value.trim();
+            const elevenKey = document.getElementById('elevenKey').value.trim();
+            const voiceId = document.getElementById('voiceId').value.trim();
 
             if (!geminiKey || !elevenKey) {
                 alert('Please enter both API keys to continue.');

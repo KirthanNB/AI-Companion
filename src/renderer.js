@@ -143,94 +143,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    if (header) {
-        header.addEventListener('mouseenter', () => setIgnoreMouseEvents(false));
-        header.addEventListener('mouseleave', () => setIgnoreMouseEvents(true));
-        // Add Context Menu for Roam Mode (Right Click Header)
-        header.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            cycleRoamMode();
+    // [NEW] Setup Settings/Reset Button
+    const settingsBtn = document.getElementById('btn-settings');
+    if (settingsBtn) {
+        settingsBtn.addEventListener('click', async () => {
+            // Open Setup Wizard for editing (Keep keys)
+            showBubble("Opening Settings... ⚙️");
+            await ipcRenderer.invoke('open-settings');
         });
+        settingsBtn.addEventListener('mouseenter', () => setIgnoreMouseEvents(false));
+        settingsBtn.addEventListener('mouseleave', () => setIgnoreMouseEvents(true));
     }
 
-    // Default: Ignore mouse (Pass-through)
-    setIgnoreMouseEvents(true);
-
-    // [REMOVED] agent-log listener - user prefers console only
-
-    ipcRenderer.on('agent-speak', (event, text) => {
-        showBubble(text);
-        speak(text);
-    });
-
-    // --- Draggable Controls Logic ---
-    const controlsArea = document.querySelector('.controls-area');
-    if (controlsArea) {
-        let isDraggingControls = false;
-        let startX, startY, initialLeft, initialTop, initialBottom;
-
-        controlsArea.addEventListener('mousedown', (e) => {
-            // Only drag if clicking the container or background, not the buttons directly
-            // Actually, fine to drag from buttons if needed, but let's prioritize background
-            if (e.target.closest('button')) return;
-
-            isDraggingControls = true;
-            startX = e.clientX;
-            startY = e.clientY;
-
-            const rect = controlsArea.getBoundingClientRect();
-            // We need to switch from 'bottom/left default' to fixed top/left for dragging
-            // Or just compute offsets.
-            // Let's set it to absolute top/left based on current position to start
-            controlsArea.style.bottom = 'auto';
-            controlsArea.style.left = rect.left + 'px';
-            controlsArea.style.top = rect.top + 'px';
-            controlsArea.style.transform = 'none'; // Remove the translateX(-50%)
-
-            initialLeft = rect.left;
-            initialTop = rect.top;
-
-            controlsArea.style.cursor = 'grabbing';
-            ipcRenderer.send('set-ignore-mouse-events', false); // Ensure we keep focus
+    // [NEW] Setup Quit Button
+    const quitBtn = document.getElementById('btn-quit');
+    if (quitBtn) {
+        quitBtn.addEventListener('click', async () => {
+            showBubble("Goodbye! 👋");
+            setTimeout(() => ipcRenderer.invoke('quit-app'), 1000);
         });
-
-        window.addEventListener('mousemove', (e) => {
-            if (!isDraggingControls) return;
-            const dx = e.clientX - startX;
-            const dy = e.clientY - startY;
-            const newLeft = initialLeft + dx;
-            const newTop = initialTop + dy;
-
-            controlsArea.style.left = newLeft + 'px';
-            controlsArea.style.top = newTop + 'px';
-
-            // [ORIENTATION] Dynamic switch near edges
-            const threshold = 60; // Distance from edge to trigger vertical
-            const screenWidth = window.innerWidth;
-
-            if (newLeft < threshold || (newLeft + controlsArea.offsetWidth) > (screenWidth - threshold)) {
-                controlsArea.style.flexDirection = 'column';
-                controlsArea.style.padding = '10px 5px';
-            } else {
-                controlsArea.style.flexDirection = 'row';
-                controlsArea.style.padding = '5px 10px';
-            }
-        });
-
-        window.addEventListener('mouseup', () => {
-            if (isDraggingControls) {
-                isDraggingControls = false;
-                controlsArea.style.cursor = 'move';
-                // Snap to edges if very close? (Optional polish)
-            }
-        });
-
-        // Ensure transparency management works
-        controlsArea.addEventListener('mouseenter', () => ipcRenderer.send('set-ignore-mouse-events', false));
-        controlsArea.addEventListener('mouseleave', () => {
-            if (!isDraggingControls) ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
-        });
+        quitBtn.addEventListener('mouseenter', () => setIgnoreMouseEvents(false));
+        quitBtn.addEventListener('mouseleave', () => setIgnoreMouseEvents(true));
     }
+
+
 });
 
 function cycleRoamMode(btn = null) {
@@ -1215,3 +1151,110 @@ function showBubble(text) {
         }, 5000);
     }
 }
+
+// ==========================================
+// [RESTORED] Draggable Controls Logic
+// ==========================================
+document.addEventListener('DOMContentLoaded', () => {
+    const controlsArea = document.querySelector('.controls-area');
+    const toggleBtn = document.getElementById('btn-toggle-controls');
+
+    // 1. Toggle Logic
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Don't trigger drag
+            controlsArea.classList.toggle('collapsed');
+            const isCollapsed = controlsArea.classList.contains('collapsed');
+
+            // Hide/Show other buttons
+            const btns = controlsArea.querySelectorAll('button:not(#btn-toggle-controls)');
+            btns.forEach(b => b.style.display = isCollapsed ? 'none' : 'flex');
+
+            // Toggle Icon
+            toggleBtn.innerHTML = isCollapsed ? '<i class="fas fa-bars"></i>' : '<i class="fas fa-times"></i>';
+        });
+
+        // Ensure transparency works on toggle
+        toggleBtn.addEventListener('mouseenter', () => ipcRenderer.send('set-ignore-mouse-events', false));
+        toggleBtn.addEventListener('mouseleave', () => {
+            // Only ignore if not dragging
+            if (!isDraggingControls) ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
+        });
+    }
+
+    // 2. Drag Logic
+    let isDraggingControls = false;
+    let startX, startY, initialLeft, initialTop;
+
+    if (controlsArea) {
+        controlsArea.addEventListener('mousedown', (e) => {
+            // Allow dragging from buttons too, just NOT the toggle button
+            if (e.target.closest('#btn-toggle-controls')) return;
+
+            isDraggingControls = true;
+            startX = e.clientX;
+            startY = e.clientY;
+
+            const rect = controlsArea.getBoundingClientRect();
+
+            // Switch to fixed positioning based on current visual
+            controlsArea.style.bottom = 'auto';
+            controlsArea.style.left = rect.left + 'px';
+            controlsArea.style.top = rect.top + 'px';
+            controlsArea.style.transform = 'none';
+
+            initialLeft = rect.left;
+            initialTop = rect.top;
+
+            controlsArea.style.cursor = 'grabbing';
+            ipcRenderer.send('set-ignore-mouse-events', false); // Lock focus
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDraggingControls) return;
+
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            let newLeft = initialLeft + dx;
+            let newTop = initialTop + dy;
+
+            // Simple Bounds
+            const maxX = window.innerWidth - 50;
+            const maxY = window.innerHeight - 50;
+            if (newLeft < 0) newLeft = 0; if (newLeft > maxX) newLeft = maxX;
+            if (newTop < 0) newTop = 0; if (newTop > maxY) newTop = maxY;
+
+            controlsArea.style.left = newLeft + 'px';
+            controlsArea.style.top = newTop + 'px';
+
+            // 3. Smart Orientation
+            // If near Left/Right edge (< 100px), go Vertical
+            const isNearSide = (newLeft < 100) || (newLeft > window.innerWidth - 100);
+
+            if (isNearSide) {
+                controlsArea.style.flexDirection = 'column';
+                controlsArea.style.width = 'auto';
+                controlsArea.style.height = 'auto';
+                controlsArea.style.padding = '10px 5px';
+            } else {
+                controlsArea.style.flexDirection = 'row';
+                controlsArea.style.width = 'auto';
+                controlsArea.style.height = 'auto';
+                controlsArea.style.padding = '5px 10px';
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (isDraggingControls) {
+                isDraggingControls = false;
+                controlsArea.style.cursor = 'move';
+            }
+        });
+
+        // Transparency Logic for Container
+        controlsArea.addEventListener('mouseenter', () => ipcRenderer.send('set-ignore-mouse-events', false));
+        controlsArea.addEventListener('mouseleave', () => {
+            if (!isDraggingControls) ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
+        });
+    }
+});

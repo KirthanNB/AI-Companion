@@ -18,12 +18,7 @@
         </div>
 
         <!-- Floating UI: Header -->
-        <header>
-            <div class="logo">🤖 AI Comp.</div>
-            <div class="status-bar">
-                <span id="connection-status" style="color: #4ade80;">●</span>
-            </div>
-        </header>
+
 
 
         <!-- Dynamic Speech Bubble -->
@@ -33,6 +28,11 @@
 
         <!-- Floating UI: Controls -->
         <div class="controls-area">
+            <button id="btn-toggle-controls" class="mic-button"
+                style="z-index: 10000; cursor: pointer; background: #333; width: 40px; height: 40px; font-size: 1em;"
+                title="Expand/Collapse">
+                <i class="fas fa-bars"></i>
+            </button>
             <button id="btn-mic" class="mic-button" style="z-index: 9999; cursor: pointer;">
                 <i class="fas fa-microphone"></i>
             </button>
@@ -47,6 +47,14 @@
             <button id="btn-game-mode" class="mic-button" style="z-index: 9999; cursor: pointer; background: #cd5c5c;"
                 title="Toggle Agent Mode">
                 <i class="fas fa-robot"></i>
+            </button>
+            <button id="btn-settings" class="mic-button" style="z-index: 9999; cursor: pointer; background: #64748b;"
+                title="Reset Credentials / Setup">
+                <i class="fas fa-cog"></i>
+            </button>
+            <button id="btn-quit" class="mic-button" style="z-index: 9999; cursor: pointer; background: #ef4444;"
+                title="Quit App">
+                <i class="fas fa-power-off"></i>
             </button>
         </div>
     </div>
@@ -92,7 +100,8 @@
             </div>
         </div>
 
-        <textarea id="agent-input" placeholder="✨ Type your command... eg: Generating images/sending messages etc...'" style="
+        <textarea id="agent-input" placeholder="✨ Type your command... eg: Generating images/sending messages etc...'"
+            style="
                 width: 100%;
                 height: 90px;
                 background: rgba(0, 0, 0, 0.4);
@@ -207,7 +216,7 @@
     </style>
 
     <!-- Floating UI: Chat Log -->
-    <div class="chat-log" id="chat-log" style="z-index: 9998;"></div>
+
 
     <audio id="audio-player" style="display: none;"></audio>
     </div>
