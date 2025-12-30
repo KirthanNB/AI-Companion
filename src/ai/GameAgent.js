@@ -350,8 +350,6 @@ class GameAgent {
          { "type": "stop", "reason": "task complete" }
       
       Actions (MUST BE JSON ARRAY):
-      
-      Actions (MUST BE JSON ARRAY):
       - [{ "thought": "Reasoning...", "type": "click", "x": 100, "y": 200 }]
       - [{ "thought": "Typing...", "type": "type", "text": "hello", "enter": true }]
       - [{ "thought": "Launching app", "type": "launch_app", "app": "notepad" }]
@@ -486,56 +484,82 @@ class GameAgent {
                     await new Promise(r => setTimeout(r, 800));
                 }
                 break;
-            case 'send_whatsapp':
-                this.log(`📱 WhatsApp: Sending to ${action.contact}`);
+            // case 'send_whatsapp': // DISABLED - Removed WhatsApp integration
+            case 'send_whatsapp_DISABLED':
+                this.log(`📱 WhatsApp Web: Sending to ${action.contact}`);
                 try {
-                    // Simple keyboard automation - works 95%+ reliably
-                    this.log('🚀 Launching WhatsApp Desktop...');
-                    await this.enhancedAuto.launchApp('whatsapp');
+                    // Use WhatsApp Web - much more reliable than desktop app
+                    this.speak(`Sending WhatsApp message to ${action.contact}`);
 
-                    // [CRITICAL] Wait longer for WhatsApp to fully load and be ready
-                    this.log('⏳ Waiting for WhatsApp to fully load (10 seconds)...');
-                    await new Promise(r => setTimeout(r, 10000));
+                    this.log('🌐 Opening Chrome directly...');
+                    // Use child_process to directly launch Chrome
+                    const { exec } = require('child_process');
+                    exec('start chrome', (error) => {
+                        if (error) this.log(`⚠️ Chrome launch error: ${error.message}`);
+                    });
+                    await new Promise(r => setTimeout(r, 8000)); // Account selection time
 
-                    // Use existing focusWindow to bring WhatsApp to foreground
-                    this.log('🎯 Focusing WhatsApp window...');
-                    try {
-                        await this.enhancedAuto.focusWindow('whatsapp');
-                        this.log('✅ WhatsApp window focused');
-                        await new Promise(r => setTimeout(r, 1000));
-                    } catch (err) {
-                        this.log(`⚠️ Could not focus WhatsApp window: ${err.message}`);
-                        // Continue anyway
-                    }
-
-                    this.log('🔍 Sending Ctrl+F...');
-                    await this.enhancedAuto.pressKey('ctrl+f');
-                    await new Promise(r => setTimeout(r, 1200));
-
-                    this.log(`⌨️ Typing: "${action.contact}"`);
-                    await this.enhancedAuto.type(action.contact);
-                    await new Promise(r => setTimeout(r, 2000));
-
-                    this.log('↩️ Pressing Enter...');
-                    await this.enhancedAuto.pressKey('enter');
-                    await new Promise(r => setTimeout(r, 1500));
-
-                    this.log(`💬 Typing message: "${action.message}"`);
-                    await this.enhancedAuto.type(action.message);
+                    // Navigate to WhatsApp Web
+                    this.log('📍 Navigating to web.whatsapp.com...');
+                    await this.enhancedAuto.pressKey('ctrl+l'); // Focus address bar
                     await new Promise(r => setTimeout(r, 800));
 
-                    this.log('📤 Sending with Enter...');
+                    // Clear any existing text
+                    await this.enhancedAuto.pressKey('ctrl+a');
+                    await new Promise(r => setTimeout(r, 200));
+
+                    await this.enhancedAuto.type('web.whatsapp.com');
+                    await new Promise(r => setTimeout(r, 500));
+                    await this.enhancedAuto.pressKey('enter');
+
+                    // Wait for WhatsApp Web to load (might need QR code scan if not logged in)
+                    this.log('⏳ Waiting for WhatsApp Web to load (15 seconds)...');
+                    this.speak('Waiting for WhatsApp Web to load. Scan QR if needed.');
+                    await new Promise(r => setTimeout(r, 15000));
+
+                    // [FIX] Click page center first to ensure focus is on page, not URL bar
+                    this.log('� Clicking page center to focus...');
+                    await this.enhancedAuto.click(640, 400);
+                    await new Promise(r => setTimeout(r, 800));
+
+                    // Now use Ctrl+F to open search (more reliable than clicking)
+                    this.log('🔍 Opening search with Ctrl+F...');
+                    await this.enhancedAuto.pressKey('ctrl+f');
+                    await new Promise(r => setTimeout(r, 1500));
+
+                    // Type contact name
+                    this.log(`⌨️ Searching for: "${action.contact}"`);
+                    await this.enhancedAuto.type(action.contact);
+                    await new Promise(r => setTimeout(r, 2500)); // Longer wait for search results
+
+                    // Press Enter to select first result
+                    this.log('↩️ Selecting contact...');
+                    await this.enhancedAuto.pressKey('enter');
+                    await new Promise(r => setTimeout(r, 2000));
+
+                    // Close search box
+                    this.log('🔚 Closing search...');
+                    await this.enhancedAuto.pressKey('escape');
+                    await new Promise(r => setTimeout(r, 800));
+
+                    // Type message in the message box
+                    this.log(`💬 Typing message: "${action.message}"`);
+                    await this.enhancedAuto.type(action.message);
+                    await new Promise(r => setTimeout(r, 1000));
+
+                    // Send message
+                    this.log('📤 Sending message...');
                     await this.enhancedAuto.pressKey('enter');
                     await new Promise(r => setTimeout(r, 1500));
 
-                    this.speak(`Message sent to ${action.contact} on WhatsApp`);
-                    this.history.push(`✅ WhatsApp: Sent to ${action.contact}`);
-                    this.log(`✅ WhatsApp message sent successfully!`);
+                    this.speak(`Message sent to ${action.contact} via WhatsApp Web`);
+                    this.history.push(`✅ WhatsApp Web: Sent to ${action.contact}`);
+                    this.log(`✅ WhatsApp Web message sent successfully!`);
                 } catch (error) {
-                    this.log(`❌ WhatsApp Error: ${error.message}`);
+                    this.log(`❌ WhatsApp Web Error: ${error.message}`);
                     const errorMsg = `Failed to send WhatsApp to ${action.contact}: ${error.message}`;
                     this.speak(errorMsg);
-                    this.history.push(`❌ WhatsApp FAILED: ${error.message}`);
+                    this.history.push(`❌ WhatsApp Web FAILED: ${error.message}`);
                 }
                 break;
             case 'generate_image':
