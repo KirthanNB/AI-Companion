@@ -2,7 +2,8 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
-require('dotenv').config();
+// [FIX] Explicit path for production (.env is in app root, main.js is in src/)
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const CredentialService = require('./services/CredentialService');
 
 // [FIX] Separate Dev/Prod User Data to avoid Cache Locks and Conflicts

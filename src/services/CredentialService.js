@@ -1,7 +1,8 @@
 const Store = require('electron-store');
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config();
+// [FIX] Explicit path for production (.env is in app root, CredentialService is in src/services/)
+require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 
 class CredentialService {
     constructor() {
