@@ -20,19 +20,30 @@ class CredentialService {
         let elevenKey = this.store.get('eleven_api_key');
         let elevenVoice = this.store.get('eleven_voice_id');
 
-        // 2. Fallback to process.env (legacy/dev)
-        // 2. Fallback to process.env (legacy/dev) - Check BOTH possible keys
+        // 2. Fallback to process.env (Check BOTH possible keys)
         const envGemini = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
-        // [FIX] Do NOT auto-migrate .env keys to store. Keep them separate.
 
         let usingDefaultGemini = false;
-        if (!geminiKey && envGemini) {
+
+        // [FIX] If stored key matches .env key (from old migration), treat as default
+        if (geminiKey && geminiKey === envGemini) {
+            usingDefaultGemini = true;
+            // Optionally clear it from store to 'undo' the migration
+            this.store.delete('google_api_key');
+            geminiKey = envGemini; // Ensure we use it
+        }
+        else if (!geminiKey && envGemini) {
             geminiKey = envGemini;
             usingDefaultGemini = true;
         }
 
         let usingDefaultEleven = false;
-        if (!elevenKey && process.env.ELEVEN_API_KEY) {
+        if (elevenKey && elevenKey === process.env.ELEVEN_API_KEY) {
+            usingDefaultEleven = true;
+            this.store.delete('eleven_api_key');
+            elevenKey = process.env.ELEVEN_API_KEY;
+        }
+        else if (!elevenKey && process.env.ELEVEN_API_KEY) {
             elevenKey = process.env.ELEVEN_API_KEY;
             usingDefaultEleven = true;
         }
