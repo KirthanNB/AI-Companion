@@ -36,17 +36,6 @@ jobs:
 
 
 
-    - name: Create .env file
-      shell: bash
-      env:
-        GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} 
-        ELEVEN_API_KEY: ${{ secrets.ELEVEN_API_KEY }}
-      run: |
-        echo "GOOGLE_API_KEY=$GOOGLE_API_KEY" >> .env
-        echo "GEMINI_API_KEY=$GEMINI_API_KEY" >> .env
-        echo "ELEVEN_API_KEY=$ELEVEN_API_KEY" >> .env
-        echo "ELEVENLABS_API_KEY=$ELEVEN_API_KEY" >> .env
 
     - name: Build App
       env:

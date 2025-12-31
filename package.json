@@ -55,8 +55,7 @@
     },
     "files": [
       "**/*",
-      "!node_modules",
-      ".env"
+      "!node_modules"
     ],
     "win": {
       "target": [
