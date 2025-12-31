@@ -56,7 +56,8 @@
     "win": {
       "target": [
         "nsis"
-      ]
+      ],
+      "icon": "build/icon.png"
     },
     "mac": {
       "target": [

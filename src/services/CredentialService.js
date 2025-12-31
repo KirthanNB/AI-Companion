@@ -23,21 +23,22 @@ class CredentialService {
         // 2. Fallback to process.env (legacy/dev)
         // 2. Fallback to process.env (legacy/dev) - Check BOTH possible keys
         const envGemini = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
+        // [FIX] Do NOT auto-migrate .env keys to store. Keep them separate.
+
+        let usingDefaultGemini = false;
         if (!geminiKey && envGemini) {
-            console.log('📦 Migrating Gemini key from .env to secure store...');
             geminiKey = envGemini;
-            this.store.set('google_api_key', geminiKey);
+            usingDefaultGemini = true;
         }
 
+        let usingDefaultEleven = false;
         if (!elevenKey && process.env.ELEVEN_API_KEY) {
-            console.log('📦 Migrating ElevenLabs key from .env to secure store...');
             elevenKey = process.env.ELEVEN_API_KEY;
-            this.store.set('eleven_api_key', elevenKey);
+            usingDefaultEleven = true;
         }
 
         if (!elevenVoice && process.env.ELEVEN_VOICE_ID) {
             elevenVoice = process.env.ELEVEN_VOICE_ID;
-            this.store.set('eleven_voice_id', elevenVoice);
         }
 
         // 3. Inject back into process.env so the rest of the app works seamlessly
@@ -56,13 +57,19 @@ class CredentialService {
             geminiKey,
             elevenKey,
             elevenVoice,
+            usingDefaultGemini, // [NEW] Flag for UI
+            usingDefaultEleven, // [NEW] Flag for UI
             isComplete: !!(geminiKey && elevenKey)
         };
     }
 
     saveCredentials({ geminiKey, elevenKey, elevenVoice }) {
         if (geminiKey) this.store.set('google_api_key', geminiKey);
+        else if (geminiKey === '') this.store.delete('google_api_key'); // [NEW] Allow clearing
+
         if (elevenKey) this.store.set('eleven_api_key', elevenKey);
+        else if (elevenKey === '') this.store.delete('eleven_api_key'); // [NEW] Allow clearing
+
         if (elevenVoice) this.store.set('eleven_voice_id', elevenVoice);
 
         // Update current session

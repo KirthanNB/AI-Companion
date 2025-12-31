@@ -176,14 +176,25 @@
         }
 
         // [NEW] Check for existing keys on load
+        let hasDefaults = false;
+
         window.addEventListener('DOMContentLoaded', async () => {
             try {
                 const creds = await ipcRenderer.invoke('get-saved-credentials');
-                if (creds && creds.geminiKey) { // Check for actual key presence
-                    // Populate fields
-                    if (creds.geminiKey) document.getElementById('geminiKey').value = creds.geminiKey;
-                    if (creds.elevenKey) document.getElementById('elevenKey').value = creds.elevenKey;
-                    if (creds.elevenVoice) document.getElementById('voiceId').value = creds.elevenVoice;
+                if (creds) {
+                    // Populate fields ONLY if NOT using default keys
+                    if (creds.geminiKey && !creds.usingDefaultGemini) {
+                        document.getElementById('geminiKey').value = creds.geminiKey;
+                    }
+                    if (creds.elevenKey && !creds.usingDefaultEleven) {
+                        document.getElementById('elevenKey').value = creds.elevenKey;
+                    }
+                    if (creds.elevenVoice) {
+                        document.getElementById('voiceId').value = creds.elevenVoice;
+                    }
+
+                    // Track if we have functional keys (default or user)
+                    if (creds.isComplete) hasDefaults = true;
 
                     document.querySelector('h1').textContent = "Settings ⚙️";
                     document.querySelector('button[onclick="saveAndStart()"]').textContent = "Update & Restart";
@@ -202,9 +213,14 @@
             const elevenKey = document.getElementById('elevenKey').value.trim();
             const voiceId = document.getElementById('voiceId').value.trim();
 
-            if (!geminiKey || !elevenKey) {
-                alert('Please enter both API keys to continue.');
-                return;
+            // [FIX] Relax validation to allow clearing/resetting to default
+            // Only block if we truly have NO keys (no default, no input)
+            if ((!geminiKey || !elevenKey) && !hasDefaults) {
+                // It's possible the user wants to clear keys, but we'll give a soft warning or just allow it 
+                // and let the main app handle the error.
+                // For now, let's just warn if they are completely empty and we don't know of any defaults.
+                const confirmAction = confirm("Some API keys are empty. The app might not work. Continue?");
+                if (!confirmAction) return;
             }
 
             const success = await ipcRenderer.invoke('save-setup-info', {
