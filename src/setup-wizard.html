@@ -127,6 +127,7 @@
     <div class="container">
         <h1>Welcome! 🤖</h1>
         <p>Let's get your AI Companion ready. Please provide your API keys to continue.</p>
+        <p>You can also continue by skipping this step.</p>
 
         <div class="input-group">
             <label>Google Gemini API Key</label>
@@ -219,7 +220,7 @@
                 // It's possible the user wants to clear keys, but we'll give a soft warning or just allow it 
                 // and let the main app handle the error.
                 // For now, let's just warn if they are completely empty and we don't know of any defaults.
-                const confirmAction = confirm("Some API keys are empty. The app might not work. Continue?");
+                const confirmAction = confirm("You can go without api for now, but please bring our own api keys soon!!🙏🙏");
                 if (!confirmAction) return;
             }
 
