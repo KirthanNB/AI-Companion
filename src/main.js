@@ -69,7 +69,15 @@ function createMainWindow() {
   // Mouse event forwarding handler
   ipcMain.on('set-ignore-mouse-events', (event, ignore, options) => {
     const win = BrowserWindow.fromWebContents(event.sender);
-    if (win) win.setIgnoreMouseEvents(ignore, { forward: true });
+    if (!win) return;
+
+    // console.log(`[IPC] set-ignore-mouse-events: ${ignore}`);
+
+    if (ignore) {
+      win.setIgnoreMouseEvents(true, { forward: true });
+    } else {
+      win.setIgnoreMouseEvents(false);
+    }
   });
 
   // [NEW] Forward logs from Renderer to Terminal

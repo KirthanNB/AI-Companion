@@ -20,6 +20,11 @@ let roamMode = 'FULL'; // FULL, BOTTOM, NONE
 let currentRequestId = 0; // [NEW] Track requests for interruption
 let isVisionActive = false; // [NEW] Manual vision toggle
 let isDebugActive = true; // [NEW] Manual debug toggle (default ON)
+// [NEW] Character State
+let companionType = 'CAT'; // CAT, DOG, UFO
+let avatarType = 'MALE'; // MALE, FEMALE, ALIEN
+let isModalOpen = false; // [FIX] Track settings modal state explicitly
+
 
 // Helper to log to screen
 // --- Dynamic Model Selection ---
@@ -221,19 +226,35 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // [NEW] Setup Settings/Reset Button
+    // [NEW] Setup Settings Modal Logic
     const settingsBtn = document.getElementById('btn-settings');
-    if (settingsBtn) {
-        settingsBtn.addEventListener('click', async () => {
-            // Open Setup Wizard for editing (Keep keys)
-            showBubble("Opening Settings... ⚙️");
-            await ipcRenderer.invoke('open-settings');
+    const settingsModal = document.getElementById('settings-modal');
+    const closeSettingsBtn = document.getElementById('btn-close-settings');
+
+    if (settingsBtn && settingsModal) {
+        settingsBtn.addEventListener('click', () => {
+            console.log("⚙️ Settings Clicked");
+            isModalOpen = true;
+            settingsModal.style.display = 'block';
+            showBubble("Settings Open ⚙️");
+            setIgnoreMouseEvents(false); // Force interactive
         });
+
         settingsBtn.addEventListener('mouseenter', () => setIgnoreMouseEvents(false));
-        settingsBtn.addEventListener('mouseleave', () => setIgnoreMouseEvents(true));
+        settingsBtn.addEventListener('mouseleave', () => {
+            // [FIX] safeguard: Only ignore if modal is NOT open
+            if (!isModalOpen) setIgnoreMouseEvents(true);
+        });
+
+        // [FIX] Add Modal Safeguard
+        settingsModal.addEventListener('mouseenter', () => {
+            isModalOpen = true; // Reinforce
+            setIgnoreMouseEvents(false);
+        });
+        settingsModal.addEventListener('mousemove', () => setIgnoreMouseEvents(false));
     }
 
-    // [NEW] Setup Quit Button
+    // [NEW] Setup Quit Button (Restored)
     const quitBtn = document.getElementById('btn-quit');
     if (quitBtn) {
         quitBtn.addEventListener('click', async () => {
@@ -244,35 +265,86 @@ document.addEventListener('DOMContentLoaded', async () => {
         quitBtn.addEventListener('mouseleave', () => setIgnoreMouseEvents(true));
     }
 
+    if (closeSettingsBtn) {
+        closeSettingsBtn.addEventListener('click', () => {
+            isModalOpen = false; // [FIX] Clear flag
+            settingsModal.style.display = 'none';
+            setIgnoreMouseEvents(true); // Return to default
+        });
+    }
 
-});
+    // ... (rest of listeners)
+    // ...
 
-function cycleRoamMode(btn = null) {
-    const b = btn || document.getElementById('btn-roam');
-    if (roamMode === 'FULL') {
-        roamMode = 'BOTTOM';
-        showBubble("Bottom Only ⬇️");
-        if (b) {
-            b.innerHTML = '<i class="fas fa-grip-lines"></i>';
-            b.title = "Roam Mode: Bottom Only";
-        }
+
+
+
+
+
+    // [NEW] View Mode Buttons
+    const viewBtns = document.querySelectorAll('.view-btn');
+    viewBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            // UI Update
+            viewBtns.forEach(b => {
+                b.classList.remove('active');
+                b.style.background = 'transparent';
+                b.style.color = '#cbd5e1';
+            });
+            e.target.classList.add('active');
+            e.target.style.background = '#334155';
+            e.target.style.color = 'white';
+
+            // Logic Update
+            const mode = e.target.getAttribute('data-mode');
+            setRoamMode(mode);
+        });
+    });
+
+    // [NEW] Apply Look Button
+    const btnApply = document.getElementById('btn-apply-look');
+    if (btnApply) {
+        btnApply.addEventListener('click', () => {
+            const compSelect = document.getElementById('select-companion');
+            const avSelect = document.getElementById('select-avatar');
+
+            companionType = compSelect.value;
+            avatarType = avSelect.value;
+
+            generatePixelSprites();
+
+            // Sound effect
+            if (companionType === 'DOG') playSynthBark();
+            else if (companionType === 'UFO') playSynthUFO();
+            else if (companionType === 'GHOST') playSynthGhost();
+            else if (companionType === 'ROBOT') playSynthRobot();
+            else if (companionType === 'RABBIT') playSynthRabbit();
+            else playRealMeow();
+
+            showBubble("Look Updated! ✨");
+        });
     }
-    else if (roamMode === 'BOTTOM') {
-        roamMode = 'NONE';
-        showBubble("Hidden Mode 👻");
-        if (b) {
-            b.innerHTML = '<i class="fas fa-ghost"></i>';
-            b.title = "Roam Mode: Hidden";
-        }
+
+    // [NEW] API Config Button
+    const btnConfigApi = document.getElementById('btn-config-api');
+    if (btnConfigApi) {
+        btnConfigApi.addEventListener('click', async () => {
+            await ipcRenderer.invoke('open-settings');
+        });
     }
-    else {
-        roamMode = 'FULL';
-        showBubble("Full Screen 🌍");
-        if (b) {
-            b.innerHTML = '<i class="fas fa-arrows-alt"></i>';
-            b.title = "Roam Mode: Full Screen";
-        }
-    }
+
+
+}); // End DOMContentLoaded
+
+// [REFACTORED] Direct Set Mode
+function setRoamMode(mode) {
+    roamMode = mode;
+
+    if (roamMode === 'FULL') showBubble("Full Screen 🌍");
+    else if (roamMode === 'BOTTOM') showBubble("Bottom Only ⬇️");
+    else showBubble("Hidden Mode 👻");
+
+
 
     // Apply immediate visibility fix
     const catEl = document.getElementById('character');
@@ -325,14 +397,88 @@ function toggleDebug(btn) {
     }
 }
 
+// [REMOVED] cycleCharacters - replaced by modal logic
+// [NEW] Audio Synthesizers for new characters
+function playSynthGhost() {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    // Theremin wobble
+    osc.frequency.setValueAtTime(400, ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(600, ctx.currentTime + 0.5);
+    osc.frequency.linearRampToValueAtTime(300, ctx.currentTime + 1.5);
+
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 1.5);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 1.5);
+}
+
+function playSynthRobot() {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'square';
+    // R2D2 beeps
+    osc.frequency.setValueAtTime(800, ctx.currentTime);
+    osc.frequency.setValueAtTime(1200, ctx.currentTime + 0.1);
+    osc.frequency.setValueAtTime(600, ctx.currentTime + 0.2);
+
+    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.3);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.3);
+}
+
+function playSynthRabbit() {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'triangle';
+    // Squeak
+    osc.frequency.setValueAtTime(1200, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(1800, ctx.currentTime + 0.1);
+
+    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.1);
+}
+
 // --- Window Transparency Logic ---
 function setIgnoreMouseEvents(ignore) {
+    // [FIX] Priority Overrides
+    if (isModalOpen) {
+        ignore = false; // ALWAYS active if modal is open
+    }
+
+    // Debug spam prevention: only log if you want to trace
+    // console.log(`IgnoreMouse: ${ignore}, ModalOpen: ${isModalOpen}`);
+
     if (ignore) {
+        // [CRITICAL] forward: true allows mousemove events to still fire so we can detect hovers!
         ipcRenderer.send('set-ignore-mouse-events', true, { forward: true });
     } else {
         ipcRenderer.send('set-ignore-mouse-events', false);
     }
 }
+
 
 // --- Character Engine (Human & Cat) ---
 
@@ -427,58 +573,273 @@ function setupInteraction() {
 function generatePixelSprites() {
     const rect = (ctx, x, y, w, h, col) => { ctx.fillStyle = col; ctx.fillRect(x, y, w, h); };
 
-    // CAT
+    // --- COMPANION SPRITE GENERATION ---
     const cs = document.createElement('canvas'); cs.width = 128; cs.height = 160;
     const ctxC = cs.getContext('2d');
-    // Row 0: IDLE
-    for (let f = 0; f < 4; f++) {
-        let ox = f * 32; rect(ctxC, ox + 10, 14, 12, 12, '#ecf0f1'); rect(ctxC, ox + 9, 8, 14, 10, '#ecf0f1'); rect(ctxC, ox + 9, 5, 3, 3, '#bdc3c7'); rect(ctxC, ox + 19, 5, 3, 3, '#bdc3c7');
-        if (f !== 3) { rect(ctxC, ox + 11, 11, 2, 2, '#2c3e50'); rect(ctxC, ox + 18, 11, 2, 2, '#2c3e50'); } else { rect(ctxC, ox + 11, 12, 2, 1, '#2c3e50'); rect(ctxC, ox + 18, 12, 2, 1, '#2c3e50'); }
-        let tx = (f % 2) * 2; rect(ctxC, ox + 22, 20, 2 + tx, 3, '#95a5a6');
-    }
-    // Row 1: WALK
-    for (let f = 0; f < 4; f++) {
-        let ox = f * 32; let oy = 32; let bob = (f % 2 === 0) ? -1 : 0; rect(ctxC, ox + 8, oy + 16 + bob, 16, 9, '#ecf0f1'); rect(ctxC, ox + 20, oy + 10 + bob, 10, 8, '#ecf0f1');
-        rect(ctxC, ox + 21, oy + 7 + bob, 2, 3, '#bdc3c7'); rect(ctxC, ox + 27, oy + 7 + bob, 2, 3, '#bdc3c7'); let l1 = (f === 0 || f === 3) ? 3 : 0; rect(ctxC, ox + 10 + l1, oy + 25 + bob, 3, 4, '#bdc3c7'); rect(ctxC, ox + 18 - l1, oy + 25 + bob, 3, 4, '#bdc3c7');
-    }
-    // Row 2: SLEEP
-    for (let f = 0; f < 4; f++) { let ox = f * 32; let oy = 64; rect(ctxC, ox + 8, oy + 18, 16, 10, '#ecf0f1'); rect(ctxC, ox + 10, oy + 16, 12, 4, '#bdc3c7'); if (f % 2 === 0) { ctxC.fillStyle = '#3498db'; ctxC.fillText("z", ox + 24, oy + 10); } }
-    // Row 3: SURPRISE
-    for (let f = 0; f < 4; f++) { let ox = f * 32; let oy = 96; rect(ctxC, ox + 10, oy + 10, 12, 18, '#ecf0f1'); rect(ctxC, ox + 11, oy + 12, 3, 3, '#2c3e50'); rect(ctxC, ox + 17, oy + 12, 3, 3, '#2c3e50'); rect(ctxC, ox + 14, oy + 6, 2, 4, '#bdc3c7'); }
-    // Row 4: DRAGGED
-    for (let f = 0; f < 4; f++) {
-        let ox = f * 32; let oy = 128; rect(ctxC, ox + 10, oy + 10, 12, 16, '#ecf0f1'); rect(ctxC, ox + 9, oy + 4, 14, 10, '#ecf0f1'); rect(ctxC, ox + 11, oy + 7, 2, 2, '#2c3e50'); rect(ctxC, ox + 18, oy + 7, 2, 2, '#2c3e50');
-        rect(ctxC, ox + 6, oy + 12, 4, 8, '#bdc3c7'); rect(ctxC, ox + 22, oy + 12, 4, 8, '#bdc3c7'); let k = (f % 2 === 0) ? -2 : 2; rect(ctxC, ox + 10, oy + 26 + k, 3, 5, '#bdc3c7'); rect(ctxC, ox + 19, oy + 26 - k, 3, 5, '#bdc3c7');
+
+    if (companionType === 'DOG') {
+        // DOG SPRITES
+        // Row 0: IDLE
+        for (let f = 0; f < 4; f++) {
+            let ox = f * 32;
+            // Body
+            rect(ctxC, ox + 8, 14, 14, 10, '#d35400'); // Brown body
+            rect(ctxC, ox + 6, 10, 8, 8, '#d35400'); // Head
+            rect(ctxC, ox + 6, 12, 2, 4, '#a04000'); // Ear L
+            rect(ctxC, ox + 14, 12, 2, 4, '#a04000'); // Ear R
+            // Tail wag
+            if (f % 2 === 0) rect(ctxC, ox + 22, 14, 4, 2, '#d35400');
+            else rect(ctxC, ox + 22, 12, 4, 2, '#d35400');
+            // Eyes
+            if (f !== 3) { rect(ctxC, ox + 8, 13, 2, 2, 'black'); rect(ctxC, ox + 12, 13, 2, 2, 'black'); }
+        }
+        // Row 1: WALK
+        for (let f = 0; f < 4; f++) {
+            let ox = f * 32; let oy = 32; let bob = (f % 2 === 0) ? -1 : 0;
+            rect(ctxC, ox + 8, oy + 16 + bob, 16, 9, '#d35400');
+            rect(ctxC, ox + 20, oy + 12 + bob, 8, 8, '#d35400'); // Head
+            // Legs
+            let l1 = (f === 0 || f === 3) ? 3 : 0;
+            rect(ctxC, ox + 10 + l1, oy + 25 + bob, 3, 5, '#a04000');
+            rect(ctxC, ox + 18 - l1, oy + 25 + bob, 3, 5, '#a04000');
+        }
+        // Row 2: SLEEP
+        for (let f = 0; f < 4; f++) {
+            let ox = f * 32; let oy = 64;
+            rect(ctxC, ox + 8, oy + 18, 16, 8, '#d35400');
+            rect(ctxC, ox + 16, oy + 16, 6, 6, '#d35400'); // Head tucked
+            if (f % 2 === 0) { ctxC.fillStyle = '#f1c40f'; ctxC.fillText("z", ox + 24, oy + 10); }
+        }
+        // Row 3: SURPRISE -> BARKING
+        for (let f = 0; f < 4; f++) {
+            let ox = f * 32; let oy = 96;
+            rect(ctxC, ox + 8, oy + 14, 14, 10, '#d35400');
+            rect(ctxC, ox + 6, oy + 8, 8, 8, '#d35400');
+            rect(ctxC, ox + 14, oy + 14, 4, 4, 'pink'); // Tongue
+        }
+
+    } else if (companionType === 'UFO') {
+        // UFO SPRITES
+        // Row 0: IDLE
+        for (let f = 0; f < 4; f++) {
+            let ox = f * 32;
+            let float = Math.sin(f) * 2;
+            rect(ctxC, ox + 4, 10 + float, 24, 8, '#95a5a6'); // Disc
+            rect(ctxC, ox + 10, 6 + float, 12, 6, '#3498db'); // Dome
+            // Lights
+            if (f % 2 === 0) rect(ctxC, ox + 6, 14 + float, 3, 2, 'red');
+            else rect(ctxC, ox + 22, 14 + float, 3, 2, 'green');
+        }
+        // Row 1: WALK (Fly)
+        for (let f = 0; f < 4; f++) {
+            let ox = f * 32; let oy = 32;
+            rect(ctxC, ox + 4, oy + 10, 24, 8, '#95a5a6');
+            rect(ctxC, ox + 10, oy + 6, 12, 6, '#3498db');
+            // Trail
+            rect(ctxC, ox + 2, oy + 14, 4, 2, '#f1c40f');
+        }
+        // Row 2: SLEEP (Landed)
+        for (let f = 0; f < 4; f++) {
+            let ox = f * 32; let oy = 64;
+            rect(ctxC, ox + 4, oy + 20, 24, 8, '#7f8c8d'); // Darker
+            rect(ctxC, ox + 10, oy + 16, 12, 6, '#2980b9'); // Off
+        }
+        // Row 3: SURPRISE (Beam)
+        for (let f = 0; f < 4; f++) {
+            let ox = f * 32; let oy = 96;
+            rect(ctxC, ox + 4, oy + 10, 24, 8, '#95a5a6');
+            rect(ctxC, ox + 10, oy + 6, 12, 6, '#3498db');
+            // Beam
+            ctxC.globalAlpha = 0.5;
+            rect(ctxC, ox + 10, oy + 18, 12, 14, '#f1c40f');
+            ctxC.globalAlpha = 1.0;
+        }
+
+    } else if (companionType === 'GHOST') {
+        // GHOST SPRITES (White/Alpha)
+        for (let f = 0; f < 4; f++) {
+            let ox = f * 32; let float = Math.sin(f) * 2;
+
+            // IDLE
+            ctxC.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctxC.fillRect(ox + 8, 10 + float, 16, 16);
+            ctxC.fillStyle = 'black';
+            if (f !== 3) { ctxC.fillRect(ox + 12, 14 + float, 2, 4); ctxC.fillRect(ox + 18, 14 + float, 2, 4); }
+
+            // WALK (Bob)
+            ctxC.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctxC.fillRect(ox + 8, 32 + 10 + float, 16, 16);
+
+            // SLEEP (Faded)
+            ctxC.fillStyle = 'rgba(255, 255, 255, 0.4)';
+            ctxC.fillRect(ox + 8, 64 + 14, 16, 12);
+
+            // SURPRISE (Big eyes)
+            ctxC.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            ctxC.fillRect(ox + 8, 96 + 10, 16, 16);
+            ctxC.fillStyle = 'black';
+            ctxC.fillRect(ox + 10, 96 + 12, 4, 6); ctxC.fillRect(ox + 18, 96 + 12, 4, 6);
+        }
+
+    } else if (companionType === 'RABBIT') {
+        // RABBIT SPRITES
+        // Row 0: IDLE
+        for (let f = 0; f < 4; f++) {
+            let ox = f * 32;
+            rect(ctxC, ox + 10, 16, 12, 10, '#ffffff'); // Body
+            rect(ctxC, ox + 10, 6, 2, 10, '#ffffff'); // Ear L
+            rect(ctxC, ox + 18, 6, 2, 10, '#ffffff'); // Ear R
+            if (f !== 3) { rect(ctxC, ox + 12, 18, 2, 2, 'pink'); } // Nose
+        }
+        // Row 1: WALK (Hop)
+        for (let f = 0; f < 4; f++) {
+            let ox = f * 32; let oy = 32; let hop = (f % 2 === 0) ? -5 : 0;
+            rect(ctxC, ox + 10, oy + 16 + hop, 12, 10, '#ffffff');
+            rect(ctxC, ox + 10, oy + 6 + hop, 2, 10, '#ffffff');
+            rect(ctxC, ox + 18, oy + 6 + hop, 2, 10, '#ffffff');
+        }
+        // Row 2: SLEEP
+        for (let f = 0; f < 4; f++) {
+            let ox = f * 32; let oy = 64;
+            rect(ctxC, ox + 10, oy + 20, 12, 8, '#ffffff');
+            rect(ctxC, ox + 8, oy + 22, 2, 6, '#ffffff'); // Ear down
+        }
+        // Row 3: SUPRISE
+        for (let f = 0; f < 4; f++) {
+            let ox = f * 32; let oy = 96;
+            rect(ctxC, ox + 10, oy + 16, 12, 10, '#ffffff');
+            rect(ctxC, ox + 8, oy + 4, 2, 12, '#ffffff'); // Ear Up
+            rect(ctxC, ox + 20, oy + 4, 2, 12, '#ffffff');
+        }
+
+    } else if (companionType === 'ROBOT') {
+        // ROBOT SPRITES
+        const metal = '#bdc3c7'; const dark = '#7f8c8d';
+        for (let f = 0; f < 4; f++) {
+            let ox = f * 32;
+            // IDLE
+            rect(ctxC, ox + 8, 10, 16, 16, metal);
+            rect(ctxC, ox + 10, 14, 4, 4, '#3498db'); rect(ctxC, ox + 18, 14, 4, 4, '#3498db');
+            rect(ctxC, ox + 15, 6, 2, 4, dark); // Antenna
+
+            // WALK (Roll)
+            let roll = (f % 2 === 0) ? 1 : -1;
+            rect(ctxC, ox + 8, 32 + 10, 16, 16, metal);
+            rect(ctxC, ox + 8, 32 + 26, 4, 4, dark); rect(ctxC, ox + 20, 32 + 26, 4, 4, dark); // Wheels
+
+            // SLEEP (Off)
+            rect(ctxC, ox + 8, 64 + 14, 16, 16, dark);
+
+            // SURPRISE (Alert)
+            rect(ctxC, ox + 8, 96 + 10, 16, 16, metal);
+            rect(ctxC, ox + 10, 96 + 14, 12, 4, 'red'); // Visor
+        }
+    } else {
+        // DEFAULT CAT
+        // Row 0: IDLE
+        for (let f = 0; f < 4; f++) {
+            let ox = f * 32; rect(ctxC, ox + 10, 14, 12, 12, '#ecf0f1'); rect(ctxC, ox + 9, 8, 14, 10, '#ecf0f1'); rect(ctxC, ox + 9, 5, 3, 3, '#bdc3c7'); rect(ctxC, ox + 19, 5, 3, 3, '#bdc3c7');
+            if (f !== 3) { rect(ctxC, ox + 11, 11, 2, 2, '#2c3e50'); rect(ctxC, ox + 18, 11, 2, 2, '#2c3e50'); } else { rect(ctxC, ox + 11, 12, 2, 1, '#2c3e50'); rect(ctxC, ox + 18, 12, 2, 1, '#2c3e50'); }
+            let tx = (f % 2) * 2; rect(ctxC, ox + 22, 20, 2 + tx, 3, '#95a5a6');
+        }
+        // Row 1: WALK
+        for (let f = 0; f < 4; f++) {
+            let ox = f * 32; let oy = 32; let bob = (f % 2 === 0) ? -1 : 0; rect(ctxC, ox + 8, oy + 16 + bob, 16, 9, '#ecf0f1'); rect(ctxC, ox + 20, oy + 10 + bob, 10, 8, '#ecf0f1');
+            rect(ctxC, ox + 21, oy + 7 + bob, 2, 3, '#bdc3c7'); rect(ctxC, ox + 27, oy + 7 + bob, 2, 3, '#bdc3c7'); let l1 = (f === 0 || f === 3) ? 3 : 0; rect(ctxC, ox + 10 + l1, oy + 25 + bob, 3, 4, '#bdc3c7'); rect(ctxC, ox + 18 - l1, oy + 25 + bob, 3, 4, '#bdc3c7');
+        }
+        // Row 2: SLEEP
+        for (let f = 0; f < 4; f++) { let ox = f * 32; let oy = 64; rect(ctxC, ox + 8, oy + 18, 16, 10, '#ecf0f1'); rect(ctxC, ox + 10, oy + 16, 12, 4, '#bdc3c7'); if (f % 2 === 0) { ctxC.fillStyle = '#3498db'; ctxC.fillText("z", ox + 24, oy + 10); } }
+        // Row 3: SURPRISE
+        for (let f = 0; f < 4; f++) { let ox = f * 32; let oy = 96; rect(ctxC, ox + 10, oy + 10, 12, 18, '#ecf0f1'); rect(ctxC, ox + 11, oy + 12, 3, 3, '#2c3e50'); rect(ctxC, ox + 17, oy + 12, 3, 3, '#2c3e50'); rect(ctxC, ox + 14, oy + 6, 2, 4, '#bdc3c7'); }
+        // Row 4: DRAGGED
+        for (let f = 0; f < 4; f++) {
+            let ox = f * 32; let oy = 128; rect(ctxC, ox + 10, oy + 10, 12, 16, '#ecf0f1'); rect(ctxC, ox + 9, oy + 4, 14, 10, '#ecf0f1'); rect(ctxC, ox + 11, oy + 7, 2, 2, '#2c3e50'); rect(ctxC, ox + 18, oy + 7, 2, 2, '#2c3e50');
+            rect(ctxC, ox + 6, oy + 12, 4, 8, '#bdc3c7'); rect(ctxC, ox + 22, oy + 12, 4, 8, '#bdc3c7'); let k = (f % 2 === 0) ? -2 : 2; rect(ctxC, ox + 10, oy + 26 + k, 3, 5, '#bdc3c7'); rect(ctxC, ox + 19, oy + 26 - k, 3, 5, '#bdc3c7');
+        }
     }
     catSpriteSheet = cs;
 
-    // HUMAN
+    // --- AVATAR SPRITE GENERATION ---
     const hs = document.createElement('canvas'); hs.width = 128; hs.height = 128;
     const ctxH = hs.getContext('2d');
+
+    // Colors based on type
+    let skin = '#ffccaa';
+    let hair = '#6d4c41';
+    let shirt = '#3498db';
+    let pants = '#2c3e50';
+
+    if (avatarType === 'FEMALE') {
+        hair = '#e67e22'; // Ginger
+        shirt = '#9b59b6'; // Purple
+    } else if (avatarType === 'ALIEN') {
+        skin = '#2ecc71'; // Green
+        hair = '#16a085'; // Dark Green
+        shirt = '#bdc3c7'; // Silver
+    } else if (avatarType === 'ZOMBIE') {
+        skin = '#8bc34a'; // Zombie Green
+        hair = '#333';
+        shirt = '#555'; // Grey rags
+    } else if (avatarType === 'WIZARD') {
+        skin = '#ffe0b2';
+        hair = '#eee'; // White beard
+        shirt = '#3f51b5'; // Blue robe
+    } else if (avatarType === 'CYBORG') {
+        skin = '#bdc3c7';
+        hair = '#000';
+        shirt = '#2c3e50';
+    }
+
     // Row 0: IDLE
     for (let f = 0; f < 4; f++) {
-        let ox = f * 32; rect(ctxH, ox + 12, 6, 8, 8, '#ffccaa'); rect(ctxH, ox + 12, 4, 8, 3, '#6d4c41'); if (f !== 3) { rect(ctxH, ox + 14, 9, 1, 1, '#000'); rect(ctxH, ox + 17, 9, 1, 1, '#000'); }
-        rect(ctxH, ox + 11, 14, 10, 10, '#3498db'); rect(ctxH, ox + 9, 14, 2, 8, '#ffccaa'); rect(ctxH, ox + 21, 14, 2, 8, '#ffccaa'); rect(ctxH, ox + 11, 24, 4, 8, '#2c3e50'); rect(ctxH, ox + 17, 24, 4, 8, '#2c3e50');
+        let ox = f * 32;
+        // Head
+        rect(ctxH, ox + 12, 6, 8, 8, skin);
+        // Hair
+        if (avatarType === 'FEMALE') rect(ctxH, ox + 11, 4, 10, 6, hair); // Long hair
+        else if (avatarType === 'WIZARD') { rect(ctxH, ox + 11, 2, 10, 4, '#3f51b5'); rect(ctxH, ox + 12, 14, 8, 4, '#eee'); } // Hat + Beard
+        else rect(ctxH, ox + 12, 4, 8, 3, hair);
+
+        if (f !== 3) {
+            rect(ctxH, ox + 14, 9, 1, 1, '#000');
+            if (avatarType === 'CYBORG') rect(ctxH, ox + 17, 9, 2, 2, 'red'); // Red Eye
+            else rect(ctxH, ox + 17, 9, 1, 1, '#000');
+        }
+        // Body
+        rect(ctxH, ox + 11, 14, 10, 10, shirt);
+        rect(ctxH, ox + 9, 14, 2, 8, skin); rect(ctxH, ox + 21, 14, 2, 8, skin);
+        rect(ctxH, ox + 11, 24, 4, 8, pants); rect(ctxH, ox + 17, 24, 4, 8, pants);
     }
-    // Row 1: WALK/RUN (SIDE)
+    // Row 1: WALK/RUN
     for (let f = 0; f < 4; f++) {
         let ox = f * 32; let oy = 32; let bob = (f % 2 !== 0) ? -2 : 0;
-        rect(ctxH, ox + 12, oy + 6 + bob, 8, 8, '#ffccaa'); rect(ctxH, ox + 12, oy + 4 + bob, 8, 3, '#6d4c41');
-        rect(ctxH, ox + 18, oy + 8 + bob, 2, 2, '#000'); rect(ctxH, ox + 13, oy + 14 + bob, 6, 10, '#3498db');
-        if (f === 1) { rect(ctxH, ox + 16, oy + 16 + bob, 4, 3, '#ffccaa'); }
-        else if (f === 3) { rect(ctxH, ox + 10, oy + 16 + bob, 4, 3, '#ffccaa'); }
-        else { rect(ctxH, ox + 15, oy + 14 + bob, 2, 8, '#ffccaa'); }
-        if (f === 0 || f === 2) { rect(ctxH, ox + 14, oy + 24 + bob, 4, 8, '#2c3e50'); }
-        else if (f === 1) { rect(ctxH, ox + 10, oy + 24 + bob, 3, 6, '#2c3e50'); rect(ctxH, ox + 19, oy + 24 + bob, 3, 6, '#2c3e50'); }
-        else if (f === 3) { rect(ctxH, ox + 12, oy + 24 + bob, 3, 6, '#2c3e50'); rect(ctxH, ox + 17, oy + 24 + bob, 3, 6, '#2c3e50'); }
+        rect(ctxH, ox + 12, oy + 6 + bob, 8, 8, skin);
+        if (avatarType === 'FEMALE') rect(ctxH, ox + 11, oy + 4 + bob, 10, 6, hair);
+        else if (avatarType === 'WIZARD') { rect(ctxH, ox + 11, oy + 2 + bob, 10, 4, '#3f51b5'); rect(ctxH, ox + 12, oy + 14 + bob, 8, 4, '#eee'); }
+        else rect(ctxH, ox + 12, oy + 4 + bob, 8, 3, hair);
+
+        rect(ctxH, ox + 18, oy + 8 + bob, 2, 2, '#000'); rect(ctxH, ox + 13, oy + 14 + bob, 6, 10, shirt);
+        if (f === 1) { rect(ctxH, ox + 16, oy + 16 + bob, 4, 3, skin); }
+        else if (f === 3) { rect(ctxH, ox + 10, oy + 16 + bob, 4, 3, skin); }
+        else { rect(ctxH, ox + 15, oy + 14 + bob, 2, 8, skin); }
+        if (f === 0 || f === 2) { rect(ctxH, ox + 14, oy + 24 + bob, 4, 8, pants); }
+        else if (f === 1) { rect(ctxH, ox + 10, oy + 24 + bob, 3, 6, pants); rect(ctxH, ox + 19, oy + 24 + bob, 3, 6, pants); }
+        else if (f === 3) { rect(ctxH, ox + 12, oy + 24 + bob, 3, 6, pants); rect(ctxH, ox + 17, oy + 24 + bob, 3, 6, pants); }
     }
     // Row 2: TALK
     for (let f = 0; f < 4; f++) {
-        let ox = f * 32; let oy = 64; rect(ctxH, ox + 12, oy + 6, 8, 8, '#ffccaa'); rect(ctxH, ox + 12, oy + 4, 8, 3, '#6d4c41'); rect(ctxH, ox + 11, oy + 14, 10, 10, '#3498db'); rect(ctxH, ox + 11, oy + 24, 4, 8, '#2c3e50'); rect(ctxH, ox + 17, oy + 24, 4, 8, '#2c3e50');
-        if (f % 2 === 0) rect(ctxH, ox + 15, oy + 12, 2, 1, '#d35400'); else rect(ctxH, ox + 15, oy + 11, 2, 3, '#a04000'); if (f === 1 || f === 2) rect(ctxH, ox + 21, oy + 10, 4, 4, '#ffccaa');
+        let ox = f * 32; let oy = 64;
+        rect(ctxH, ox + 12, oy + 6, 8, 8, skin);
+        // ... (Simplified copy of IDLE with mouth animation) ...
+        if (avatarType === 'FEMALE') rect(ctxH, ox + 11, oy + 4, 10, 6, hair);
+        else rect(ctxH, ox + 12, oy + 4, 8, 3, hair);
+
+        rect(ctxH, ox + 11, oy + 14, 10, 10, shirt); rect(ctxH, ox + 11, oy + 24, 4, 8, pants); rect(ctxH, ox + 17, oy + 24, 4, 8, pants);
+        if (f % 2 === 0) rect(ctxH, ox + 15, oy + 12, 2, 1, '#d35400'); else rect(ctxH, ox + 15, oy + 11, 2, 3, '#a04000');
     }
     humanSpriteSheet = hs;
 }
+
 
 function gameLoop(timestamp) {
     const dt = timestamp - lastTime;
@@ -558,9 +919,11 @@ function updateCat(dt) {
 
     // Force Floor in Bottom Mode
     if (roamMode === 'BOTTOM') {
+        const targetY = (companionType === 'UFO') ? fixedY - 40 : fixedY; // UFO hovers higher
+
         // Linear interpolation to floor if not there
-        if (Math.abs(pet.y - fixedY) > 5) pet.y += (fixedY - pet.y) * 0.1;
-        else pet.y = fixedY;
+        if (Math.abs(pet.y - targetY) > 5) pet.y += (targetY - pet.y) * 0.1;
+        else pet.y = targetY;
     } else {
         if (pet.y < minY) pet.y += 5; if (pet.y > maxY - 50) pet.y = maxY - 50;
     }
@@ -614,7 +977,14 @@ function updateHuman(dt) {
         humanTextTimer += dt;
         if (humanTextTimer > 3000) {
             humanTextTimer = 0;
-            const shouts = ["Stop!", "Wait!", "Food!", "Hey!!", "Zoomies!"];
+            // [NEW] Dynamic Shouts
+            let shouts = ["Stop!", "Wait!", "Hey!!", "Zoomies!"];
+            if (companionType === 'DOG') shouts = ["Down boy!", "Sit!", "No bark!", "Bad dog!"];
+            else if (companionType === 'UFO') shouts = ["Too fast!", "Slow down!", "Earth logic!", "Wait!"];
+            else if (companionType === 'GHOST') shouts = ["Too spooky!", "Boo!", "Come back!", "Eek!"];
+            else if (companionType === 'ROBOT') shouts = ["Halt!", "Error 404!", "Slow down!", "Rebooting..."];
+            else if (companionType === 'RABBIT') shouts = ["Hop!", "Catching you!", "Bunny!", "Wait!"];
+
             showHumanThought(shouts[Math.floor(Math.random() * shouts.length)]);
         }
     } else if (dist > 200) {
@@ -644,7 +1014,16 @@ function updateHuman(dt) {
                 hum.state = hum.isTalking ? 'TALK' : 'IDLE';
                 // [FIX] FREQUENCY: Increased chance to 40% (was 20%)
                 if (Math.random() < 0.4) {
-                    const musings = ["Hmm...", "Where is Kitty?", "Kitty?", "Work time."];
+                    let musings = ["Hmm...", "Where is Kitty?", "Kitty?", "Work time."];
+
+                    // [NEW] Dynamic Musings
+                    const pName = (companionType === 'DOG') ? "Doggy" : (companionType === 'UFO') ? "Probe" : "Kitty";
+                    musings = ["Hmm...", `Where is ${pName}?`, `${pName}?`, "Work time."];
+
+                    if (avatarType === 'ALIEN') {
+                        musings = ["Analyzing...", "Human logic?", "Zorp?", "Stars..."];
+                    }
+
                     showHumanThought(musings[Math.floor(Math.random() * musings.length)]);
                 }
             }
@@ -671,7 +1050,22 @@ function updateHuman(dt) {
                 // [FIX] User requested "delay a bit a min of 4 sec gap"
                 hum.nextThoughtTime = 4000 + Math.random() * 4000; // 4s - 8s gap
                 if (Math.random() < 0.6) { // 60% chance to actually think
-                    const musings = ["Hmm...", "Where is Kitty?", "Kitty?", "Work time.", "Need coffee.", "What was that?"];
+                    let musings = ["Hmm...", "Where is Kitty?", "Kitty?", "Work time.", "Need coffee.", "What was that?"];
+
+                    // [NEW] Dynamic Musings
+                    const pName = (companionType === 'DOG') ? "Doggy" : (companionType === 'UFO') ? "Probe" : (companionType === 'GHOST') ? "Spirit" : (companionType === 'ROBOT') ? "Unit" : (companionType === 'RABBIT') ? "Bun" : "Kitty";
+                    musings = ["Hmm...", `Where is ${pName}?`, `${pName}?`, "Work time.", "Need coffee."];
+
+                    if (avatarType === 'ALIEN') {
+                        musings = ["Analyzing...", `Where is ${pName}?`, "Human customs...", "Zorp?", "Mothership?"];
+                    } else if (avatarType === 'ZOMBIE') {
+                        musings = ["Brains...", "Hungry...", "Ughhh...", `${pName} tasty?`, "Itchy..."];
+                    } else if (avatarType === 'WIZARD') {
+                        musings = ["Pondering...", "Mana low.", "Magic...", "Where is my staff?", "Hocus Pocus."];
+                    } else if (avatarType === 'CYBORG') {
+                        musings = ["Scanning...", "System optimal.", "Battery 90%.", "Logic check.", "Target acquired."];
+                    }
+
                     showHumanThought(musings[Math.floor(Math.random() * musings.length)]);
                 }
             }
@@ -878,19 +1272,58 @@ function updateBubblePosition() {
 }
 
 function showRandomCuteThought() {
-    const thoughts = ["🐟", "🧶", "🥛", "🐭", "❤️", "🐾", "✨", "🦋"];
+    let thoughts = ["🐟", "🧶", "🥛", "🐭", "❤️", "🐾", "✨", "🦋"];
+
+    if (companionType === 'DOG') {
+        thoughts = ["🦴", "🥩", "🎾", "🐿️", "💩", "🐾", "🐕", "🌭"];
+    } else if (companionType === 'UFO') {
+        thoughts = ["📡", "👽", "🪐", "⚡", "🔋", "💿", "🌌", "🐄"];
+    }
+
     spawnFloatingEmoji(thoughts[Math.floor(Math.random() * thoughts.length)], actors.cat.x, actors.cat.y, "24px", "#FFF", actors.cat);
 }
 
 // --- Audio Logic ---
 let currentAudio = null;
 function playRealMeow() {
+    if (companionType === 'DOG') {
+        playSynthBark();
+        return;
+    } else if (companionType === 'UFO') {
+        playSynthUFO();
+        return;
+    }
+
     if (currentAudio) { currentAudio.pause(); currentAudio.currentTime = 0; }
     const file = MEOW_SOUNDS[Math.floor(Math.random() * MEOW_SOUNDS.length)];
     const audio = new Audio(`assets/${file}`);
     audio.playbackRate = 0.9 + Math.random() * 0.3; audio.volume = 0.5;
     audio.play().catch(e => { console.warn("Audio failed", e); playSynthMeow(0.1); });
     currentAudio = audio;
+}
+
+function playSynthBark() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const os = audioCtx.createOscillator(); const g = audioCtx.createGain();
+    os.connect(g); g.connect(audioCtx.destination);
+    os.type = 'sawtooth';
+    os.frequency.setValueAtTime(300, audioCtx.currentTime);
+    os.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.1);
+    g.gain.setValueAtTime(0.2, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+    os.start(); os.stop(audioCtx.currentTime + 0.1);
+}
+
+function playSynthUFO() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const os = audioCtx.createOscillator(); const g = audioCtx.createGain();
+    os.connect(g); g.connect(audioCtx.destination);
+    os.type = 'sine';
+    os.frequency.setValueAtTime(400, audioCtx.currentTime);
+    os.frequency.linearRampToValueAtTime(800, audioCtx.currentTime + 0.3);
+    g.gain.setValueAtTime(0.1, audioCtx.currentTime);
+    g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.3);
+    os.start(); os.stop(audioCtx.currentTime + 0.3);
 }
 
 function playDragSound() {
