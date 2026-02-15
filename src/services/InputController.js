@@ -3,10 +3,30 @@ const path = require('path');
 
 let pythonProcess = null;
 let bridgeReady = false;
+let isRestarting = false;
+
+function cleanupPythonProcess() {
+    if (pythonProcess) {
+        try {
+            pythonProcess.stdin.removeAllListeners();
+            pythonProcess.stdout.removeAllListeners();
+            pythonProcess.stderr.removeAllListeners();
+            pythonProcess.removeAllListeners();
+            if (!pythonProcess.killed) {
+                pythonProcess.kill();
+            }
+        } catch (e) {
+            // Ignore cleanup errors
+        }
+        pythonProcess = null;
+    }
+    bridgeReady = false;
+}
 
 function startPythonBridge() {
-    if (pythonProcess) return;
+    if (pythonProcess || isRestarting) return;
 
+    isRestarting = true;
     const scriptPath = path.join(__dirname, 'input_bridge.py');
 
     // Try multiple Python commands (Windows compatibility)
@@ -16,6 +36,7 @@ function startPythonBridge() {
     function tryNextPython() {
         if (attemptIndex >= pythonCommands.length) {
             console.error('❌ Failed to start Python bridge. Install Python and pydirectinput.');
+            isRestarting = false;
             return;
         }
 
@@ -25,9 +46,15 @@ function startPythonBridge() {
         try {
             pythonProcess = spawn(cmd, [scriptPath]);
 
+            // Handle stdin errors to prevent EPIPE crashes
+            pythonProcess.stdin.on('error', (err) => {
+                console.error('Python bridge stdin error:', err.message);
+                cleanupPythonProcess();
+            });
+
             pythonProcess.stdout.on('data', (data) => {
                 const output = data.toString().trim();
-                if (output.includes('success')) {
+                if (output.includes('success') || output.includes('ready')) {
                     bridgeReady = true;
                 }
                 console.log('Python Bridge:', output);
@@ -39,8 +66,7 @@ function startPythonBridge() {
 
                 // If it's a "not found" error, try next command
                 if (error.includes('not found') || error.includes('No module')) {
-                    pythonProcess.kill();
-                    pythonProcess = null;
+                    cleanupPythonProcess();
                     attemptIndex++;
                     setTimeout(tryNextPython, 100);
                 }
@@ -48,13 +74,12 @@ function startPythonBridge() {
 
             pythonProcess.on('close', (code) => {
                 console.log(`Python bridge exited with code ${code}`);
-                pythonProcess = null;
-                bridgeReady = false;
+                cleanupPythonProcess();
             });
 
             pythonProcess.on('error', (err) => {
                 console.error(`Failed to start ${cmd}:`, err.message);
-                pythonProcess = null;
+                cleanupPythonProcess();
                 attemptIndex++;
                 setTimeout(tryNextPython, 100);
             });
@@ -63,11 +88,13 @@ function startPythonBridge() {
             setTimeout(() => {
                 if (pythonProcess && !pythonProcess.killed) {
                     console.log(`✅ Python bridge started successfully with ${cmd}`);
+                    isRestarting = false;
                 }
             }, 500);
 
         } catch (err) {
             console.error(`Error spawning ${cmd}:`, err);
+            cleanupPythonProcess();
             attemptIndex++;
             setTimeout(tryNextPython, 100);
         }
@@ -77,8 +104,16 @@ function startPythonBridge() {
 }
 
 function sendCommand(command) {
-    if (!pythonProcess) {
+    if (!pythonProcess || !pythonProcess.stdin || pythonProcess.killed) {
         console.warn('⚠️ Python bridge not running. Attempting to start...');
+        startPythonBridge();
+        return;
+    }
+
+    // Check if stdin is writable
+    if (!pythonProcess.stdin.writable) {
+        console.warn('⚠️ Python bridge stdin not writable. Restarting...');
+        cleanupPythonProcess();
         startPythonBridge();
         return;
     }
@@ -87,7 +122,9 @@ function sendCommand(command) {
         pythonProcess.stdin.write(JSON.stringify(command) + '\n');
         console.log('📤 Sent to Python:', command.type);
     } catch (err) {
-        console.error('Failed to send command:', err);
+        console.error('Failed to send command:', err.message);
+        cleanupPythonProcess();
+        // Don't restart immediately to avoid spam
     }
 }
 
